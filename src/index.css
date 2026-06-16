@@ -1,0 +1,58 @@
+@import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;700&family=Syne:wght@700;800&display=swap');
+
+:root {
+  --color-bg: #0f0f0f;
+  --color-bg-soft: #151515;
+  --color-surface: #1e1e1c;
+  --color-surface-2: #292925;
+  --color-paper: #f7f5ee;
+  --color-muted: rgba(247, 245, 238, 0.62);
+  --color-subtle: rgba(247, 245, 238, 0.38);
+  --color-border: rgba(247, 245, 238, 0.11);
+  --color-primary: #c8ff00;
+  --color-cyan: #70d6ff;
+  --color-danger: #ff4d4d;
+  --color-warning: #ffce73;
+  --font-display: 'Syne', system-ui, sans-serif;
+  --font-body: 'DM Sans', system-ui, sans-serif;
+  color: var(--color-paper);
+  background: var(--color-bg);
+  font-family: var(--font-body);
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html {
+  background: var(--color-bg);
+}
+
+body {
+  margin: 0;
+  min-width: 320px;
+  min-height: 100svh;
+}
+
+button,
+input,
+select,
+textarea {
+  font: inherit;
+}
+
+button {
+  cursor: pointer;
+}
+
+a {
+  color: inherit;
+}
+
+#root {
+  min-height: 100svh;
+}
