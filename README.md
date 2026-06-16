@@ -2,6 +2,10 @@
 
 MVP do TCC para busca agregada de livros em sebos independentes, usando React, TypeScript e Supabase.
 
+## Documentacao
+
+- [Guia de uso do Sebo Virtual](docs/guia-de-uso.md)
+
 ## Funcionalidades atuais
 
 - Catalogo publico com busca por titulo, autor, categoria, ISBN e sebo.
