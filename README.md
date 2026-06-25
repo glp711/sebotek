@@ -14,7 +14,7 @@ MVP do TCC para busca agregada de livros em sebos independentes, usando React, T
 - Filtros por categoria e estado do livro, com ordenacao por preco, titulo ou recentes.
 - Pagina de sebos parceiros com status de verificacao, localizacao, telefone e resumo do acervo.
 - Conta do cliente com login, cadastro, recuperacao de senha, perfil e wishlist.
-- Area do sebo com login, cadastro por email, recuperacao de senha, cadastro do sebo para aprovacao e CRUD de livros liberado somente apos aprovacao administrativa.
+- Aba `Meu sebo` com login, cadastro por email, recuperacao de senha, cadastro do sebo para aprovacao e CRUD de livros liberado somente apos aprovacao administrativa.
 - Painel administrativo para listar sebos pendentes, aprovar cadastros e voltar sebos para analise.
 - Paginas de retorno do Supabase Auth para confirmacao de email e redefinicao de senha.
 

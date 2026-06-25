@@ -140,6 +140,16 @@ function App() {
     setLoading(false)
   }, [query])
 
+  const showView = useCallback((view: AppView) => {
+    setActiveView(view)
+    window.setTimeout(() => {
+      document.getElementById('workspace')?.scrollIntoView({
+        behavior: 'auto',
+        block: 'start',
+      })
+    }, 80)
+  }, [])
+
   useEffect(() => {
     let active = true
 
@@ -201,13 +211,13 @@ function App() {
   const handleSearch = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
     refreshCatalog(query)
-    setActiveView('catalog')
+    showView('catalog')
   }
 
   const openStoreCatalog = (storeName: string) => {
     setQuery(storeName)
     refreshCatalog(storeName)
-    setActiveView('catalog')
+    showView('catalog')
   }
 
   const refreshSession = useCallback(async () => {
@@ -225,7 +235,7 @@ function App() {
         onBack={() => {
           const intent = getAuthIntentFromUrl()
           window.history.replaceState({}, '', '/')
-          setActiveView(intent === 'store' ? 'owner' : 'client')
+          showView(intent === 'store' ? 'owner' : 'client')
         }}
       />
     )
@@ -246,37 +256,42 @@ function App() {
         <nav className="nav-actions" aria-label="Navegacao principal">
           <button
             className={activeView === 'catalog' ? 'nav-button active' : 'nav-button'}
+            aria-pressed={activeView === 'catalog'}
             type="button"
-            onClick={() => setActiveView('catalog')}
+            onClick={() => showView('catalog')}
           >
             Catalogo
           </button>
           <button
             className={activeView === 'stores' ? 'nav-button active' : 'nav-button'}
+            aria-pressed={activeView === 'stores'}
             type="button"
-            onClick={() => setActiveView('stores')}
+            onClick={() => showView('stores')}
           >
             Sebos
           </button>
           <button
             className={activeView === 'client' ? 'nav-button active' : 'nav-button'}
+            aria-pressed={activeView === 'client'}
             type="button"
-            onClick={() => setActiveView('client')}
+            onClick={() => showView('client')}
           >
             Cliente
           </button>
           <button
             className={activeView === 'owner' ? 'nav-button active' : 'nav-button'}
+            aria-pressed={activeView === 'owner'}
             type="button"
-            onClick={() => setActiveView('owner')}
+            onClick={() => showView('owner')}
           >
-            Area do sebo
+            Meu sebo
           </button>
           {profile?.role === 'ADMIN' && (
             <button
               className={activeView === 'admin' ? 'nav-button active' : 'nav-button'}
+              aria-pressed={activeView === 'admin'}
               type="button"
-              onClick={() => setActiveView('admin')}
+              onClick={() => showView('admin')}
             >
               Admin
             </button>
@@ -326,7 +341,7 @@ function App() {
           </div>
         </section>
 
-        <section className="workspace">
+        <section className="workspace" id="workspace">
           {activeView === 'catalog' && (
             <CatalogView
               books={books}
@@ -347,7 +362,7 @@ function App() {
               onCatalogSearch={(term) => {
                 setQuery(term)
                 refreshCatalog(term)
-                setActiveView('catalog')
+                showView('catalog')
               }}
             />
           )}
@@ -457,7 +472,7 @@ function AuthRoutePage({
             </p>
             <div className="dialog-actions">
               <button className="primary-action" type="button" onClick={onBack}>
-                {intent === 'store' ? 'Ir para area do sebo' : 'Ir para minha conta'}
+                {intent === 'store' ? 'Ir para aba Meu sebo' : 'Ir para aba Cliente'}
               </button>
               <a className="secondary-action" href="/">
                 Voltar ao catalogo
@@ -500,7 +515,7 @@ function AuthRoutePage({
             {message && <p className="form-message">{message}</p>}
             <button className="secondary-action" type="button" onClick={onBack}>
               <ArrowLeft size={18} />
-              Voltar ao site
+              {intent === 'store' ? 'Ir para aba Meu sebo' : 'Ir para aba Cliente'}
             </button>
           </>
         )}
@@ -1003,7 +1018,7 @@ function AuthBox({
     <section className="owner-card auth-card">
       <div className="section-heading compact">
         <div>
-          <p className="section-kicker">{intent === 'store' ? 'Area do sebo' : 'Conta do cliente'}</p>
+          <p className="section-kicker">{intent === 'store' ? 'Meu sebo' : 'Conta do cliente'}</p>
           <h2>{title}</h2>
         </div>
         <LogIn size={22} />

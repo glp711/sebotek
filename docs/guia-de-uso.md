@@ -36,7 +36,7 @@ O sistema e um MVP de TCC para centralizar catalogos de sebos independentes. A i
 
 ## Como usar a area do sebo
 
-1. Clique em `Area do sebo`.
+1. Clique em `Meu sebo`.
 2. Escolha `Entrar` ou `Cadastrar`.
 3. Para criar uma conta, informe:
    - Nome do responsavel.
@@ -87,7 +87,7 @@ Somente contas com role `ADMIN` conseguem acessar a lista administrativa e alter
 O Sebo Virtual possui dois fluxos de conta:
 
 - `Cliente`: usado pelo leitor para manter perfil e wishlist.
-- `Area do sebo`: usado pelo responsavel pelo sebo para cadastrar o estabelecimento e publicar livros.
+- `Meu sebo`: usado pelo responsavel pelo sebo para cadastrar o estabelecimento e publicar livros.
 
 Ao criar conta, o Supabase envia um email de confirmacao. O link volta para:
 
@@ -101,7 +101,9 @@ Ao pedir recuperacao de senha, o link volta para:
 https://sebo-virtual.vercel.app/auth/reset-password
 ```
 
-Em desenvolvimento local, use tambem:
+O codigo tambem usa `VITE_AUTH_REDIRECT_ORIGIN=https://sebo-virtual.vercel.app` para impedir que emails de confirmacao e reset caiam em `localhost`.
+
+Em desenvolvimento local, as URLs abaixo podem ficar liberadas apenas como apoio para teste manual:
 
 ```text
 http://127.0.0.1:5174/auth/confirm
@@ -113,9 +115,12 @@ http://localhost:5174/auth/reset-password
 No painel do Supabase, configure em `Authentication > URL Configuration`:
 
 - Site URL: `https://sebo-virtual.vercel.app`
-- Redirect URLs: as URLs de confirmacao e reset listadas acima.
+- Redirect URLs principais:
+  - `https://sebo-virtual.vercel.app/auth/confirm`
+  - `https://sebo-virtual.vercel.app/auth/reset-password`
+- Redirect URLs locais: opcionais, apenas para desenvolvimento.
 
-Sem essas URLs liberadas, o Supabase pode bloquear o redirecionamento ou mandar o usuario para uma URL antiga.
+Sem essas URLs liberadas, o Supabase pode bloquear o redirecionamento ou mandar o usuario para uma URL antiga, como `localhost`.
 
 ## Fluxo sugerido para demonstracao
 
@@ -125,7 +130,7 @@ Sem essas URLs liberadas, o Supabase pode bloquear o redirecionamento ou mandar 
 4. Limpar filtros e ordenar por menor preco.
 5. Entrar na aba `Sebos` e mostrar os cards dos sebos parceiros.
 6. Clicar em `Ver acervo` em um sebo.
-7. Abrir a `Area do sebo` e explicar o fluxo de cadastro, aprovacao e publicacao de livros.
+7. Abrir a aba `Meu sebo` e explicar o fluxo de cadastro, aprovacao e publicacao de livros.
 8. Abrir o painel `Admin` com uma conta administradora e mostrar a analise dos cadastros.
 9. Explicar que o backend usa Supabase com Auth, Postgres, RLS e Storage.
 

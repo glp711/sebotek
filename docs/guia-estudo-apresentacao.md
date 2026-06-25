@@ -195,7 +195,7 @@ Nao usamos chave secreta no frontend. O navegador usa apenas a chave publica/pub
 
 ## Fluxo do responsavel pelo sebo
 
-1. Entra em `Area do sebo`.
+1. Entra em `Meu sebo`.
 2. Cria uma conta ou faz login.
 3. Cadastra o sebo com nome, endereco, telefone e horario.
 4. Aguarda aprovacao administrativa.
@@ -221,12 +221,12 @@ O Supabase envia emails automaticos para:
 - Confirmar cadastro.
 - Recuperar senha.
 
-As URLs configuradas para retorno sao:
+As URLs configuradas para retorno em producao sao:
 
 - `https://sebo-virtual.vercel.app/auth/confirm`
 - `https://sebo-virtual.vercel.app/auth/reset-password`
 
-No desenvolvimento local, tambem podem ser usadas:
+O app usa `VITE_AUTH_REDIRECT_ORIGIN=https://sebo-virtual.vercel.app`, entao mesmo que alguem teste cadastro localmente, o email tende a voltar para o site publicado. As URLs locais abaixo ficam apenas como apoio para desenvolvimento manual:
 
 - `http://localhost:5174/auth/confirm`
 - `http://localhost:5174/auth/reset-password`
@@ -292,7 +292,7 @@ Roteiro sugerido:
 7. Entrar na aba `Sebos`.
 8. Mostrar dados dos sebos parceiros.
 9. Entrar em `Cliente` e explicar login, perfil e wishlist.
-10. Entrar em `Area do sebo`.
+10. Entrar em `Meu sebo`.
 11. Explicar cadastro do sebo e painel de acervo.
 12. Entrar no painel `Admin` e explicar a aprovacao dos sebos.
 13. Explicar que o banco usa Supabase, Auth, Postgres e RLS.

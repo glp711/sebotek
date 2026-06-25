@@ -113,9 +113,23 @@ const bookDraftToRow = (draft: BookDraft) => ({
   cover_url: cleanString(draft.coverUrl),
 })
 
+const productionOrigin = 'https://sebo-virtual.vercel.app'
+
+const getAuthOrigin = () => {
+  const configuredOrigin =
+    import.meta.env.VITE_AUTH_REDIRECT_ORIGIN?.trim() ||
+    import.meta.env.VITE_PUBLIC_SITE_URL?.trim()
+  if (configuredOrigin) return configuredOrigin.replace(/\/$/, '')
+
+  if (typeof window === 'undefined') return productionOrigin
+
+  const currentOrigin = window.location.origin
+  const isLocal = currentOrigin.includes('localhost') || currentOrigin.includes('127.0.0.1')
+  return isLocal ? productionOrigin : currentOrigin
+}
+
 const getAuthRedirectUrl = (path: '/auth/confirm' | '/auth/reset-password', intent?: AuthIntent) => {
-  const origin =
-    typeof window === 'undefined' ? 'https://sebo-virtual.vercel.app' : window.location.origin
+  const origin = getAuthOrigin()
   const url = new URL(path, origin)
   if (intent) url.searchParams.set('intent', intent)
   return url.toString()

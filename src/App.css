@@ -55,15 +55,19 @@
 
 .nav-button,
 .segmented button {
+  position: relative;
   min-height: 36px;
-  border: 0;
+  border: 1px solid transparent;
   border-radius: 7px;
   color: var(--color-muted);
   background: transparent;
+  font-weight: 800;
   padding: 0 13px;
   transition:
     background 160ms ease,
-    color 160ms ease;
+    border-color 160ms ease,
+    color 160ms ease,
+    transform 160ms ease;
 }
 
 .nav-button:hover,
@@ -76,6 +80,23 @@
 .segmented button.active {
   color: var(--color-bg);
   background: var(--color-primary);
+  border-color: rgba(247, 245, 238, 0.55);
+  box-shadow:
+    0 0 0 2px rgba(200, 255, 0, 0.22),
+    0 8px 20px rgba(0, 0, 0, 0.22);
+  transform: translateY(-1px);
+}
+
+.nav-button.active::after {
+  content: '';
+  position: absolute;
+  right: 10px;
+  bottom: -8px;
+  left: 10px;
+  height: 3px;
+  border-radius: 999px;
+  background: var(--color-primary);
+  box-shadow: 0 0 14px rgba(200, 255, 0, 0.62);
 }
 
 .hero-panel {
@@ -332,6 +353,7 @@ h1 {
 }
 
 .workspace {
+  scroll-margin-top: 18px;
   padding: 24px 0 64px;
   border-top: 1px solid var(--color-border);
 }
