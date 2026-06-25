@@ -122,6 +122,12 @@ No painel do Supabase, configure em `Authentication > URL Configuration`:
 
 Sem essas URLs liberadas, o Supabase pode bloquear o redirecionamento ou mandar o usuario para uma URL antiga, como `localhost`.
 
+### Limite de envio de emails
+
+O Supabase limita o provedor de email padrao a poucos envios por hora. Se aparecer `Email rate limit exceeded`, o sistema nao quebrou: o projeto apenas atingiu o limite temporario de envio de emails de confirmacao ou recuperacao de senha.
+
+Para destravar na hora, aguarde o limite renovar antes de testar novos cadastros. Para resolver de forma definitiva em producao, configure SMTP proprio em `Authentication > Emails > SMTP Settings` e depois ajuste os limites em `Authentication > Rate Limits`.
+
 ## Fluxo sugerido para demonstracao
 
 1. Abrir o site em producao.

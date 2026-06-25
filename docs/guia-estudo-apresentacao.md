@@ -233,6 +233,8 @@ O app usa `VITE_AUTH_REDIRECT_ORIGIN=https://sebo-virtual.vercel.app`, entao mes
 - `http://127.0.0.1:5174/auth/confirm`
 - `http://127.0.0.1:5174/auth/reset-password`
 
+Se aparecer `Email rate limit exceeded`, significa que o Supabase bloqueou temporariamente novos emails porque o provedor padrao tem limite baixo. Isso e uma protecao contra abuso, nao erro do banco. Em producao, a solucao correta e configurar SMTP proprio em `Authentication > Emails > SMTP Settings` e ajustar `Authentication > Rate Limits`.
+
 ## Estrutura do projeto
 
 Arquivos e pastas importantes:

@@ -113,6 +113,25 @@ const getWhatsappUrl = (book: BookRecord) =>
       )}`
     : undefined
 
+const getFriendlyAuthError = (error: unknown) => {
+  if (!(error instanceof Error)) return 'Nao foi possivel concluir a acao.'
+
+  const message = error.message.toLowerCase()
+  if (message.includes('email rate limit') || message.includes('rate limit')) {
+    return 'O Supabase bloqueou novos emails por limite de envio. Aguarde alguns minutos e tente de novo, ou configure SMTP proprio no Supabase para liberar mais envios.'
+  }
+
+  if (message.includes('invalid login credentials')) {
+    return 'Email ou senha incorretos.'
+  }
+
+  if (message.includes('email not confirmed')) {
+    return 'Confirme seu email antes de entrar.'
+  }
+
+  return error.message
+}
+
 type CatalogSortMode = 'recent' | 'price-asc' | 'price-desc' | 'title'
 type AppView = 'catalog' | 'stores' | 'client' | 'owner' | 'admin'
 type AuthRoute = 'confirm' | 'reset-password' | null
@@ -1008,7 +1027,7 @@ function AuthBox({
         setMessage('Enviamos um link para redefinir sua senha. Verifique seu email.')
       }
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : 'Nao foi possivel concluir a acao.')
+      setMessage(getFriendlyAuthError(error))
     } finally {
       setSaving(false)
     }
