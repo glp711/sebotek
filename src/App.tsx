@@ -14,8 +14,10 @@ import {
   Building2,
   Calendar,
   CheckCircle2,
+  Edit3,
   Eye,
   Heart,
+  ImageIcon,
   KeyRound,
   ListFilter,
   Loader2,
@@ -26,6 +28,7 @@ import {
   Phone,
   Plus,
   RefreshCw,
+  Save,
   Search,
   ShieldCheck,
   Store,
@@ -39,9 +42,11 @@ import {
   createBook,
   createStoreRequest,
   createWishlistItem,
+  deleteBook,
   deleteWishlistItem,
   getCurrentSession,
   loadCatalog,
+  loadMyBooks,
   loadMyStore,
   loadMyProfile,
   loadMyWishlist,
@@ -51,6 +56,7 @@ import {
   signUp,
   subscribeToAuth,
   updateMyProfile,
+  updateBook,
   updatePassword,
 } from './lib/catalog'
 import { isSupabaseConfigured } from './lib/supabase'
@@ -76,6 +82,20 @@ const conditionLabel: Record<BookCondition, string> = {
   GOOD: 'Bom',
   FAIR: 'Regular',
   POOR: 'Gasto',
+}
+
+const emptyBookDraft: BookDraft = {
+  title: '',
+  author: '',
+  isbn: '',
+  category: '',
+  summary: '',
+  publisher: '',
+  publishedYear: '',
+  coverUrl: '',
+  condition: 'GOOD',
+  price: '',
+  quantity: '1',
 }
 
 const formatCurrency = (value: number) =>
@@ -1263,6 +1283,9 @@ function OwnerPanel({
   onCatalogChange: () => void
 }) {
   const [store, setStore] = useState<StoreRecord | null>(null)
+  const [myBooks, setMyBooks] = useState<BookRecord[]>([])
+  const [editingBookId, setEditingBookId] = useState<string | null>(null)
+  const [inventoryQuery, setInventoryQuery] = useState('')
   const [message, setMessage] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
   const [storeDraft, setStoreDraft] = useState<StoreDraft>({
@@ -1275,35 +1298,102 @@ function OwnerPanel({
     phone: '',
     openingHours: '',
   })
-  const [bookDraft, setBookDraft] = useState<BookDraft>({
-    title: '',
-    author: '',
-    isbn: '',
-    condition: 'GOOD',
-    price: '',
-    quantity: '1',
-  })
+  const [bookDraft, setBookDraft] = useState<BookDraft>(emptyBookDraft)
+
+  const refreshOwnerBooks = useCallback(async (storeId: string) => {
+    const loadedBooks = await loadMyBooks(storeId)
+    setMyBooks(loadedBooks)
+  }, [])
 
   useEffect(() => {
     let active = true
 
     if (!session) {
       Promise.resolve().then(() => {
-        if (active) setStore(null)
+        if (active) {
+          setStore(null)
+          setMyBooks([])
+          setEditingBookId(null)
+          setBookDraft(emptyBookDraft)
+        }
       })
       return () => {
         active = false
       }
     }
 
-    loadMyStore().then((loadedStore) => {
-      if (active) setStore(loadedStore)
+    async function loadOwnerArea() {
+      const loadedStore = await loadMyStore()
+      if (!active) return
+
+      setStore(loadedStore)
+      if (loadedStore) {
+        const loadedBooks = await loadMyBooks(loadedStore.id)
+        if (active) setMyBooks(loadedBooks)
+      } else {
+        setMyBooks([])
+      }
+    }
+
+    loadOwnerArea().catch((error) => {
+      if (active) {
+        setMessage(error instanceof Error ? error.message : 'Nao foi possivel carregar o painel.')
+      }
     })
 
     return () => {
       active = false
     }
   }, [session])
+
+  const inventoryStats = useMemo(() => {
+    const totalCopies = myBooks.reduce((sum, book) => sum + book.quantity, 0)
+    const outOfStock = myBooks.filter((book) => book.quantity <= 0).length
+    const withCover = myBooks.filter((book) => book.coverUrl).length
+
+    return {
+      totalTitles: myBooks.length,
+      totalCopies,
+      outOfStock,
+      withCover,
+    }
+  }, [myBooks])
+
+  const visibleOwnerBooks = useMemo(() => {
+    const search = inventoryQuery.trim().toLowerCase()
+    if (!search) return myBooks
+
+    return myBooks.filter((book) =>
+      [book.title, book.author, book.isbn, book.category, book.publisher]
+        .filter(Boolean)
+        .join(' ')
+        .toLowerCase()
+        .includes(search),
+    )
+  }, [inventoryQuery, myBooks])
+
+  const resetBookForm = () => {
+    setEditingBookId(null)
+    setBookDraft(emptyBookDraft)
+  }
+
+  const startEditingBook = (book: BookRecord) => {
+    setEditingBookId(book.id)
+    setBookDraft({
+      title: book.title,
+      author: book.author,
+      isbn: book.isbn ?? '',
+      category: book.category ?? '',
+      summary: book.summary ?? '',
+      publisher: book.publisher ?? '',
+      publishedYear: book.publishedYear ? String(book.publishedYear) : '',
+      coverUrl: book.coverUrl ?? '',
+      condition: book.condition,
+      price: String(book.price),
+      quantity: String(book.quantity),
+    })
+    setMessage(`Editando "${book.title}".`)
+  }
 
   const handleStore = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
@@ -1312,7 +1402,9 @@ function OwnerPanel({
     try {
       await createStoreRequest(storeDraft)
       setMessage('Sebo enviado para aprovacao.')
-      setStore(await loadMyStore())
+      const loadedStore = await loadMyStore()
+      setStore(loadedStore)
+      if (loadedStore) await refreshOwnerBooks(loadedStore.id)
       onCatalogChange()
     } catch (error) {
       setMessage(error instanceof Error ? error.message : 'Nao foi possivel cadastrar o sebo.')
@@ -1326,19 +1418,37 @@ function OwnerPanel({
     setSaving(true)
     setMessage(null)
     try {
-      await createBook(store?.id ?? '', bookDraft)
-      setMessage('Livro cadastrado no acervo.')
-      setBookDraft({
-        title: '',
-        author: '',
-        isbn: '',
-        condition: 'GOOD',
-        price: '',
-        quantity: '1',
-      })
+      if (editingBookId) {
+        await updateBook(editingBookId, bookDraft)
+        setMessage('Livro atualizado no acervo.')
+      } else {
+        await createBook(store?.id ?? '', bookDraft)
+        setMessage('Livro cadastrado no acervo.')
+      }
+      resetBookForm()
+      if (store) await refreshOwnerBooks(store.id)
       onCatalogChange()
     } catch (error) {
       setMessage(error instanceof Error ? error.message : 'Nao foi possivel cadastrar o livro.')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  const handleDeleteBook = async (book: BookRecord) => {
+    const confirmed = window.confirm(`Remover "${book.title}" do acervo?`)
+    if (!confirmed) return
+
+    setSaving(true)
+    setMessage(null)
+    try {
+      await deleteBook(book.id)
+      if (editingBookId === book.id) resetBookForm()
+      if (store) await refreshOwnerBooks(store.id)
+      setMessage('Livro removido do acervo.')
+      onCatalogChange()
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : 'Nao foi possivel remover o livro.')
     } finally {
       setSaving(false)
     }
@@ -1475,22 +1585,51 @@ function OwnerPanel({
 
         {store && (
           <form className="stack-form" onSubmit={handleBook}>
-            <label>
-              Titulo
-              <input
-                required
-                value={bookDraft.title}
-                onChange={(event) => setBookDraft({ ...bookDraft, title: event.target.value })}
-              />
-            </label>
-            <label>
-              Autor
-              <input
-                required
-                value={bookDraft.author}
-                onChange={(event) => setBookDraft({ ...bookDraft, author: event.target.value })}
-              />
-            </label>
+            <div className="store-status-strip" aria-label="Resumo do sebo">
+              <span className={store.approved ? 'approved' : ''}>
+                {store.approved ? 'Aprovado' : 'Aguardando aprovacao'}
+              </span>
+              <span>
+                {store.city}, {store.state}
+              </span>
+              <span>{inventoryStats.totalTitles} titulos</span>
+            </div>
+
+            <div className="section-heading mini">
+              <div>
+                <p className="section-kicker">{editingBookId ? 'Editar livro' : 'Novo livro'}</p>
+                <h3>{editingBookId ? 'Atualizar dados do acervo' : 'Cadastrar no acervo'}</h3>
+              </div>
+              {editingBookId && (
+                <button
+                  className="secondary-action compact-action"
+                  type="button"
+                  onClick={resetBookForm}
+                >
+                  <RefreshCw size={16} />
+                  Limpar
+                </button>
+              )}
+            </div>
+
+            <div className="form-row">
+              <label>
+                Titulo
+                <input
+                  required
+                  value={bookDraft.title}
+                  onChange={(event) => setBookDraft({ ...bookDraft, title: event.target.value })}
+                />
+              </label>
+              <label>
+                Autor
+                <input
+                  required
+                  value={bookDraft.author}
+                  onChange={(event) => setBookDraft({ ...bookDraft, author: event.target.value })}
+                />
+              </label>
+            </div>
             <div className="form-row">
               <label>
                 ISBN
@@ -1499,6 +1638,58 @@ function OwnerPanel({
                   onChange={(event) => setBookDraft({ ...bookDraft, isbn: event.target.value })}
                 />
               </label>
+              <label>
+                Categoria
+                <input
+                  placeholder="Romance, Historia, Fantasia..."
+                  value={bookDraft.category}
+                  onChange={(event) =>
+                    setBookDraft({ ...bookDraft, category: event.target.value })
+                  }
+                />
+              </label>
+            </div>
+            <div className="form-row">
+              <label>
+                Editora
+                <input
+                  value={bookDraft.publisher}
+                  onChange={(event) =>
+                    setBookDraft({ ...bookDraft, publisher: event.target.value })
+                  }
+                />
+              </label>
+              <label>
+                Ano
+                <input
+                  type="number"
+                  min="1400"
+                  max="2100"
+                  value={bookDraft.publishedYear}
+                  onChange={(event) =>
+                    setBookDraft({ ...bookDraft, publishedYear: event.target.value })
+                  }
+                />
+              </label>
+            </div>
+            <label>
+              Link da capa
+              <input
+                type="url"
+                placeholder="https://..."
+                value={bookDraft.coverUrl}
+                onChange={(event) => setBookDraft({ ...bookDraft, coverUrl: event.target.value })}
+              />
+            </label>
+            <label>
+              Resumo ou observacoes
+              <textarea
+                placeholder="Edicao, estado real do exemplar, marcas de uso, sinopse curta..."
+                value={bookDraft.summary}
+                onChange={(event) => setBookDraft({ ...bookDraft, summary: event.target.value })}
+              />
+            </label>
+            <div className="form-row three">
               <label>
                 Estado
                 <select
@@ -1517,8 +1708,6 @@ function OwnerPanel({
                   ))}
                 </select>
               </label>
-            </div>
-            <div className="form-row">
               <label>
                 Preco
                 <input
@@ -1535,7 +1724,7 @@ function OwnerPanel({
                 <input
                   required
                   type="number"
-                  min="1"
+                  min="0"
                   value={bookDraft.quantity}
                   onChange={(event) =>
                     setBookDraft({ ...bookDraft, quantity: event.target.value })
@@ -1543,27 +1732,145 @@ function OwnerPanel({
                 />
               </label>
             </div>
-            <button className="primary-action" disabled={saving} type="submit">
-              {saving ? <Loader2 className="spin" size={18} /> : <Plus size={18} />}
-              Cadastrar livro
-            </button>
+            <div className="form-actions">
+              <button className="primary-action" disabled={saving} type="submit">
+                {saving ? (
+                  <Loader2 className="spin" size={18} />
+                ) : editingBookId ? (
+                  <Save size={18} />
+                ) : (
+                  <Plus size={18} />
+                )}
+                {editingBookId ? 'Salvar alteracoes' : 'Cadastrar livro'}
+              </button>
+              {editingBookId && (
+                <button className="secondary-action" type="button" onClick={resetBookForm}>
+                  <RefreshCw size={18} />
+                  Cancelar edicao
+                </button>
+              )}
+            </div>
           </form>
         )}
         {message && <p className="form-message">{message}</p>}
       </section>
 
-      <aside className="owner-note">
-        <Upload size={24} />
-        <h3>Acervo em evolucao</h3>
-        <p>
-          A migration ja cria buckets para capas e fotos. Depois da base aprovada,
-          o painel pode ganhar upload de imagem e notificacao de wishlist.
-        </p>
-        <div className="owner-checklist" aria-label="Proximos recursos">
-          <span>Capas</span>
-          <span>Wishlist</span>
-          <span>Reservas</span>
+      <aside className="owner-note inventory-panel">
+        <div className="inventory-header">
+          <Upload size={24} />
+          <div>
+            <h3>Meu acervo</h3>
+            <p>Controle o que aparece no catalogo e ajuste estoque sem sair do site.</p>
+          </div>
         </div>
+
+        {store ? (
+          <>
+            <div className="inventory-stats" aria-label="Estatisticas do acervo">
+              <span>
+                <BookOpen size={16} />
+                <strong>{inventoryStats.totalTitles}</strong>
+                Titulos
+              </span>
+              <span>
+                <ListFilter size={16} />
+                <strong>{inventoryStats.totalCopies}</strong>
+                Exemplares
+              </span>
+              <span>
+                <AlertTriangle size={16} />
+                <strong>{inventoryStats.outOfStock}</strong>
+                Sem estoque
+              </span>
+              <span>
+                <ImageIcon size={16} />
+                <strong>{inventoryStats.withCover}</strong>
+                Com capa
+              </span>
+            </div>
+
+            <label className="inventory-search">
+              <Search size={16} />
+              <input
+                placeholder="Buscar no meu acervo"
+                value={inventoryQuery}
+                onChange={(event) => setInventoryQuery(event.target.value)}
+              />
+            </label>
+
+            {visibleOwnerBooks.length === 0 ? (
+              <div className="inventory-empty">
+                <BookOpen size={22} />
+                <span>
+                  {myBooks.length === 0
+                    ? 'Cadastre o primeiro livro para preencher o catalogo.'
+                    : 'Nenhum livro encontrado nessa busca.'}
+                </span>
+              </div>
+            ) : (
+              <div className="inventory-list">
+                {visibleOwnerBooks.map((book) => (
+                  <article
+                    className={
+                      editingBookId === book.id ? 'inventory-item editing' : 'inventory-item'
+                    }
+                    key={book.id}
+                  >
+                    <div
+                      className="inventory-cover"
+                      style={{ '--cover-hue': hueFromString(book.title) } as CSSProperties}
+                    >
+                      {book.coverUrl ? (
+                        <img src={book.coverUrl} alt={`Capa de ${book.title}`} />
+                      ) : (
+                        <span>{book.title.slice(0, 2).toUpperCase()}</span>
+                      )}
+                    </div>
+                    <div className="inventory-body">
+                      <strong>{book.title}</strong>
+                      <span>{book.author}</span>
+                      <small>
+                        {formatCurrency(book.price)} / {book.quantity} un. /{' '}
+                        {conditionLabel[book.condition]}
+                      </small>
+                    </div>
+                    <div className="inventory-actions">
+                      <button
+                        className="icon-button"
+                        type="button"
+                        title="Editar livro"
+                        onClick={() => startEditingBook(book)}
+                      >
+                        <Edit3 size={16} />
+                      </button>
+                      <button
+                        className="icon-button danger"
+                        type="button"
+                        title="Remover livro"
+                        disabled={saving}
+                        onClick={() => handleDeleteBook(book)}
+                      >
+                        <Trash2 size={16} />
+                      </button>
+                    </div>
+                  </article>
+                ))}
+              </div>
+            )}
+          </>
+        ) : (
+          <>
+            <p>
+              Depois de enviar o cadastro do sebo, esta area mostra livros cadastrados,
+              estoque, capas e atalhos de edicao.
+            </p>
+            <div className="owner-checklist" aria-label="Funcoes do acervo">
+              <span>Criar livros</span>
+              <span>Editar dados</span>
+              <span>Remover itens</span>
+            </div>
+          </>
+        )}
       </aside>
     </div>
   )

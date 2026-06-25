@@ -85,6 +85,11 @@ export type BookDraft = {
   title: string
   author: string
   isbn: string
+  category: string
+  summary: string
+  publisher: string
+  publishedYear: string
+  coverUrl: string
   condition: BookCondition
   price: string
   quantity: string

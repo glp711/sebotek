@@ -55,9 +55,21 @@ O sistema e um MVP de TCC para centralizar catalogos de sebos independentes. A i
    - Titulo.
    - Autor.
    - ISBN.
+   - Categoria.
+   - Editora.
+   - Ano de publicacao.
+   - Link da capa.
+   - Resumo ou observacoes do exemplar.
    - Estado de conservacao.
    - Preco.
    - Quantidade.
+7. Use o painel `Meu acervo` para:
+   - Ver total de titulos, exemplares, livros sem estoque e livros com capa.
+   - Buscar livros do proprio sebo.
+   - Editar dados de um livro ja cadastrado.
+   - Remover um livro do acervo.
+
+Livros de sebos ainda nao aprovados continuam no painel do responsavel, mas a exibicao publica do catalogo depende das regras de aprovacao do banco.
 
 No MVP atual, a aprovacao administrativa do sebo ainda nao tem uma tela propria. Essa validacao pode ser feita diretamente no Supabase enquanto a area administrativa nao for criada.
 
@@ -218,7 +230,8 @@ npm run lint
 
 - Tela administrativa para aprovar sebos.
 - Upload de capas pelo painel do sebo.
-- Wishlist com alerta quando um livro desejado aparecer.
+- Upload de capas direto para o bucket `book-covers`.
+- Notificacao automatica quando um livro desejado aparecer na wishlist.
 - Reserva de exemplar.
 - Avaliacoes de sebos.
 - Mapa com sebos proximos.

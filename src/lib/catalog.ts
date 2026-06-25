@@ -92,6 +92,25 @@ const nullableNumber = (value: unknown) => {
   return Number(value)
 }
 
+const cleanString = (value: string) => {
+  const trimmed = value.trim()
+  return trimmed ? trimmed : null
+}
+
+const bookDraftToRow = (draft: BookDraft) => ({
+  title: draft.title.trim(),
+  author: draft.author.trim(),
+  isbn: cleanString(draft.isbn),
+  category: cleanString(draft.category),
+  summary: cleanString(draft.summary),
+  publisher: cleanString(draft.publisher),
+  published_year: draft.publishedYear ? Number(draft.publishedYear) : null,
+  condition: draft.condition,
+  price: Number(draft.price),
+  quantity: Number(draft.quantity || 0),
+  cover_url: cleanString(draft.coverUrl),
+})
+
 const getAuthRedirectUrl = (path: '/auth/confirm' | '/auth/reset-password', intent?: AuthIntent) => {
   const origin =
     typeof window === 'undefined' ? 'https://sebo-virtual.vercel.app' : window.location.origin
@@ -323,14 +342,40 @@ export async function createBook(storeId: string, draft: BookDraft) {
 
   const { error } = await supabase.from('books').insert({
     store_id: storeId,
-    title: draft.title,
-    author: draft.author,
-    isbn: draft.isbn || null,
-    condition: draft.condition,
-    price: Number(draft.price),
-    quantity: Number(draft.quantity || 1),
+    ...bookDraftToRow(draft),
   })
 
+  if (error) throw error
+}
+
+export async function loadMyBooks(storeId: string): Promise<BookRecord[]> {
+  if (!supabase || !storeId) return []
+
+  const { data, error } = await supabase
+    .from('books')
+    .select(
+      `id,title,author,isbn,category,summary,publisher,published_year,condition,price,quantity,cover_url,store_id,created_at,updated_at,stores(${publicStoreColumns})`,
+    )
+    .eq('store_id', storeId)
+    .order('updated_at', { ascending: false })
+
+  if (error) throw error
+  return (data ?? []).map((row) => normalizeBook(row))
+}
+
+export async function updateBook(bookId: string, draft: BookDraft) {
+  if (!supabase) throw new Error('Configure o Supabase no arquivo .env.local.')
+  if (!bookId) throw new Error('Escolha um livro para editar.')
+
+  const { error } = await supabase.from('books').update(bookDraftToRow(draft)).eq('id', bookId)
+  if (error) throw error
+}
+
+export async function deleteBook(bookId: string) {
+  if (!supabase) throw new Error('Configure o Supabase no arquivo .env.local.')
+  if (!bookId) throw new Error('Escolha um livro para remover.')
+
+  const { error } = await supabase.from('books').delete().eq('id', bookId)
   if (error) throw error
 }
 
