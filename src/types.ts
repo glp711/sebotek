@@ -22,6 +22,17 @@ export type StoreRecord = {
   updatedAt?: string
 }
 
+export type ProfileRole = 'CUSTOMER' | 'STORE_OWNER' | 'ADMIN'
+
+export type ProfileRecord = {
+  id: string
+  displayName: string
+  role: ProfileRole
+  avatarUrl?: string | null
+  createdAt?: string
+  updatedAt?: string
+}
+
 export type BookRecord = {
   id: string
   title: string
@@ -41,12 +52,23 @@ export type BookRecord = {
   store?: StoreRecord | null
 }
 
+export type WishlistRecord = {
+  id: string
+  userId: string
+  title: string
+  author?: string | null
+  notified: boolean
+  createdAt?: string
+}
+
 export type CatalogPayload = {
   books: BookRecord[]
   stores: StoreRecord[]
   source: CatalogSource
   error?: string
 }
+
+export type AuthIntent = 'customer' | 'store'
 
 export type StoreDraft = {
   name: string

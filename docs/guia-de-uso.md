@@ -61,6 +61,41 @@ O sistema e um MVP de TCC para centralizar catalogos de sebos independentes. A i
 
 No MVP atual, a aprovacao administrativa do sebo ainda nao tem uma tela propria. Essa validacao pode ser feita diretamente no Supabase enquanto a area administrativa nao for criada.
 
+## Login, confirmacao de email e recuperacao de senha
+
+O Sebo Virtual possui dois fluxos de conta:
+
+- `Cliente`: usado pelo leitor para manter perfil e wishlist.
+- `Area do sebo`: usado pelo responsavel pelo sebo para cadastrar o estabelecimento e publicar livros.
+
+Ao criar conta, o Supabase envia um email de confirmacao. O link volta para:
+
+```text
+https://sebo-virtual.vercel.app/auth/confirm
+```
+
+Ao pedir recuperacao de senha, o link volta para:
+
+```text
+https://sebo-virtual.vercel.app/auth/reset-password
+```
+
+Em desenvolvimento local, use tambem:
+
+```text
+http://127.0.0.1:5174/auth/confirm
+http://127.0.0.1:5174/auth/reset-password
+http://localhost:5174/auth/confirm
+http://localhost:5174/auth/reset-password
+```
+
+No painel do Supabase, configure em `Authentication > URL Configuration`:
+
+- Site URL: `https://sebo-virtual.vercel.app`
+- Redirect URLs: as URLs de confirmacao e reset listadas acima.
+
+Sem essas URLs liberadas, o Supabase pode bloquear o redirecionamento ou mandar o usuario para uma URL antiga.
+
 ## Fluxo sugerido para demonstracao
 
 1. Abrir o site em producao.
@@ -150,7 +185,13 @@ O projeto ja esta configurado com `vercel.json`:
 {
   "buildCommand": "npm run build",
   "outputDirectory": "dist",
-  "installCommand": "npm install"
+  "installCommand": "npm install",
+  "rewrites": [
+    {
+      "source": "/(.*)",
+      "destination": "/index.html"
+    }
+  ]
 }
 ```
 

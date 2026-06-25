@@ -724,6 +724,23 @@ h2 {
   color: var(--color-primary);
 }
 
+.auth-card {
+  display: grid;
+  align-content: start;
+  gap: 16px;
+}
+
+.auth-copy {
+  color: var(--color-muted);
+  line-height: 1.55;
+}
+
+.auth-segmented {
+  width: 100%;
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+}
+
 .owner-checklist {
   display: flex;
   flex-wrap: wrap;
@@ -782,6 +799,86 @@ h2 {
 .form-message {
   margin-top: 14px;
   color: var(--color-warning);
+}
+
+.panel-divider {
+  height: 1px;
+  margin: 22px 0;
+  background: var(--color-border);
+}
+
+.wishlist-note {
+  min-height: 360px;
+}
+
+.wishlist-list {
+  display: grid;
+  gap: 10px;
+}
+
+.wishlist-item {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  align-items: center;
+  gap: 12px;
+  padding: 12px;
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  background: rgba(247, 245, 238, 0.04);
+}
+
+.wishlist-item div:first-child {
+  min-width: 0;
+  display: grid;
+  gap: 3px;
+}
+
+.wishlist-item strong,
+.wishlist-item span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.wishlist-item span {
+  color: var(--color-muted);
+  font-size: 13px;
+}
+
+.wishlist-actions {
+  display: inline-flex;
+  gap: 6px;
+}
+
+.auth-page-shell {
+  width: min(760px, calc(100% - 32px));
+  min-height: 100svh;
+  display: grid;
+  place-items: center;
+  margin: 0 auto;
+  padding: 28px 0;
+}
+
+.auth-result-card {
+  width: 100%;
+  display: grid;
+  gap: 18px;
+  padding: 28px;
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  background:
+    linear-gradient(160deg, rgba(112, 214, 255, 0.1), rgba(200, 255, 0, 0.06)),
+    var(--color-surface);
+}
+
+.auth-result-card h1 {
+  font-size: clamp(34px, 7vw, 58px);
+}
+
+.auth-result-card > p:not(.section-kicker),
+.auth-result-card form + p {
+  color: var(--color-muted);
+  line-height: 1.6;
 }
 
 .empty-state {
@@ -1021,7 +1118,7 @@ h2 {
   .nav-actions {
     width: 100%;
     display: grid;
-    grid-template-columns: repeat(3, 1fr);
+    grid-template-columns: repeat(4, 1fr);
   }
 
   .nav-button {
@@ -1125,5 +1222,18 @@ h2 {
 
   .form-row {
     grid-template-columns: 1fr;
+  }
+
+  .wishlist-item {
+    align-items: stretch;
+    grid-template-columns: 1fr;
+  }
+
+  .wishlist-actions {
+    width: 100%;
+  }
+
+  .wishlist-actions .icon-button {
+    flex: 1;
   }
 }

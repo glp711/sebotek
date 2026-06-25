@@ -1,10 +1,13 @@
 import { demoBooks, demoStores } from '../data/demoCatalog'
 import type {
+  AuthIntent,
   BookDraft,
   BookRecord,
   CatalogPayload,
+  ProfileRecord,
   StoreDraft,
   StoreRecord,
+  WishlistRecord,
 } from '../types'
 import { isSupabaseConfigured, supabase } from './supabase'
 
@@ -13,6 +16,8 @@ const publicStoreColumns =
 
 const legacyStoreColumns =
   'id,name,slug,description,address,city,state,zipCode,phone,openingHours,photoUrl,latitude,longitude,approved,ownerId,createdAt,updatedAt'
+
+const publicProfileColumns = 'id,display_name,role,avatar_url,created_at,updated_at'
 
 const normalizeStore = (row: Record<string, unknown>): StoreRecord => ({
   id: String(row.id),
@@ -30,6 +35,15 @@ const normalizeStore = (row: Record<string, unknown>): StoreRecord => ({
   latitude: nullableNumber(row.latitude),
   longitude: nullableNumber(row.longitude),
   approved: Boolean(row.approved),
+  createdAt: nullableString(row.created_at ?? row.createdAt) ?? undefined,
+  updatedAt: nullableString(row.updated_at ?? row.updatedAt) ?? undefined,
+})
+
+const normalizeProfile = (row: Record<string, unknown>): ProfileRecord => ({
+  id: String(row.id),
+  displayName: String(row.display_name ?? row.displayName ?? 'Leitor'),
+  role: String(row.role ?? 'CUSTOMER') as ProfileRecord['role'],
+  avatarUrl: nullableString(row.avatar_url ?? row.avatarUrl),
   createdAt: nullableString(row.created_at ?? row.createdAt) ?? undefined,
   updatedAt: nullableString(row.updated_at ?? row.updatedAt) ?? undefined,
 })
@@ -59,6 +73,15 @@ const normalizeBook = (row: Record<string, unknown>): BookRecord => {
   }
 }
 
+const normalizeWishlist = (row: Record<string, unknown>): WishlistRecord => ({
+  id: String(row.id),
+  userId: String(row.user_id ?? row.userId ?? ''),
+  title: String(row.title ?? ''),
+  author: nullableString(row.author),
+  notified: Boolean(row.notified),
+  createdAt: nullableString(row.created_at ?? row.createdAt) ?? undefined,
+})
+
 const nullableString = (value: unknown) => {
   if (value === null || value === undefined || value === '') return null
   return String(value)
@@ -67,6 +90,14 @@ const nullableString = (value: unknown) => {
 const nullableNumber = (value: unknown) => {
   if (value === null || value === undefined || value === '') return null
   return Number(value)
+}
+
+const getAuthRedirectUrl = (path: '/auth/confirm' | '/auth/reset-password', intent?: AuthIntent) => {
+  const origin =
+    typeof window === 'undefined' ? 'https://sebo-virtual.vercel.app' : window.location.origin
+  const url = new URL(path, origin)
+  if (intent) url.searchParams.set('intent', intent)
+  return url.toString()
 }
 
 const filterCatalog = (books: BookRecord[], term: string) => {
@@ -166,23 +197,76 @@ export async function signIn(email: string, password: string) {
   if (error) throw error
 }
 
-export async function signUp(email: string, password: string, displayName: string) {
+export async function signUp(
+  email: string,
+  password: string,
+  displayName: string,
+  intent: AuthIntent = 'customer',
+) {
   if (!supabase) throw new Error('Configure o Supabase no arquivo .env.local.')
   const { error } = await supabase.auth.signUp({
     email,
     password,
     options: {
+      emailRedirectTo: getAuthRedirectUrl('/auth/confirm', intent),
       data: {
         display_name: displayName,
+        intent,
       },
     },
   })
   if (error) throw error
 }
 
+export async function sendPasswordReset(email: string, intent: AuthIntent = 'customer') {
+  if (!supabase) throw new Error('Configure o Supabase no arquivo .env.local.')
+  const { error } = await supabase.auth.resetPasswordForEmail(email, {
+    redirectTo: getAuthRedirectUrl('/auth/reset-password', intent),
+  })
+  if (error) throw error
+}
+
+export async function updatePassword(password: string) {
+  if (!supabase) throw new Error('Configure o Supabase no arquivo .env.local.')
+  const { error } = await supabase.auth.updateUser({ password })
+  if (error) throw error
+}
+
 export async function signOut() {
   if (!supabase) return
   await supabase.auth.signOut()
+}
+
+export async function loadMyProfile(): Promise<ProfileRecord | null> {
+  if (!supabase) return null
+  const {
+    data: { user },
+  } = await supabase.auth.getUser()
+  if (!user) return null
+
+  const { data, error } = await supabase
+    .from('profiles')
+    .select(publicProfileColumns)
+    .eq('id', user.id)
+    .maybeSingle()
+
+  if (error) return null
+  return data ? normalizeProfile(data) : null
+}
+
+export async function updateMyProfile(displayName: string) {
+  if (!supabase) throw new Error('Configure o Supabase no arquivo .env.local.')
+  const {
+    data: { user },
+  } = await supabase.auth.getUser()
+  if (!user) throw new Error('Entre na sua conta para editar o perfil.')
+
+  const { error } = await supabase
+    .from('profiles')
+    .update({ display_name: displayName })
+    .eq('id', user.id)
+
+  if (error) throw error
 }
 
 export async function loadMyStore(): Promise<StoreRecord | null> {
@@ -247,6 +331,45 @@ export async function createBook(storeId: string, draft: BookDraft) {
     quantity: Number(draft.quantity || 1),
   })
 
+  if (error) throw error
+}
+
+export async function loadMyWishlist(): Promise<WishlistRecord[]> {
+  if (!supabase) return []
+  const {
+    data: { user },
+  } = await supabase.auth.getUser()
+  if (!user) return []
+
+  const { data, error } = await supabase
+    .from('wishlists')
+    .select('id,user_id,title,author,notified,created_at')
+    .eq('user_id', user.id)
+    .order('created_at', { ascending: false })
+
+  if (error) throw error
+  return (data ?? []).map((row) => normalizeWishlist(row))
+}
+
+export async function createWishlistItem(title: string, author: string) {
+  if (!supabase) throw new Error('Configure o Supabase no arquivo .env.local.')
+  const {
+    data: { user },
+  } = await supabase.auth.getUser()
+  if (!user) throw new Error('Entre na sua conta para salvar uma busca.')
+
+  const { error } = await supabase.from('wishlists').insert({
+    user_id: user.id,
+    title,
+    author: author || null,
+  })
+
+  if (error) throw error
+}
+
+export async function deleteWishlistItem(id: string) {
+  if (!supabase) throw new Error('Configure o Supabase no arquivo .env.local.')
+  const { error } = await supabase.from('wishlists').delete().eq('id', id)
   if (error) throw error
 }
 

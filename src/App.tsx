@@ -8,6 +8,7 @@ import {
   type ReactNode,
 } from 'react'
 import {
+  ArrowLeft,
   AlertTriangle,
   BookOpen,
   Building2,
@@ -15,17 +16,20 @@ import {
   CheckCircle2,
   Eye,
   Heart,
+  KeyRound,
   ListFilter,
   Loader2,
   LogIn,
   MapPin,
   MessageCircle,
+  Mail,
   Phone,
   Plus,
   RefreshCw,
   Search,
   ShieldCheck,
   Store,
+  Trash2,
   Upload,
   User,
   X,
@@ -34,23 +38,33 @@ import './App.css'
 import {
   createBook,
   createStoreRequest,
+  createWishlistItem,
+  deleteWishlistItem,
   getCurrentSession,
   loadCatalog,
   loadMyStore,
+  loadMyProfile,
+  loadMyWishlist,
+  sendPasswordReset,
   signIn,
   signOut,
   signUp,
   subscribeToAuth,
+  updateMyProfile,
+  updatePassword,
 } from './lib/catalog'
 import { isSupabaseConfigured } from './lib/supabase'
 import type { AuthSession } from './lib/supabase'
 import type {
+  AuthIntent,
   BookCondition,
   BookDraft,
   BookRecord,
   CatalogSource,
+  ProfileRecord,
   StoreDraft,
   StoreRecord,
+  WishlistRecord,
 } from './types'
 
 const APP_NAME = 'Sebo Virtual'
@@ -78,6 +92,8 @@ const getWhatsappUrl = (book: BookRecord) =>
     : undefined
 
 type CatalogSortMode = 'recent' | 'price-asc' | 'price-desc' | 'title'
+type AppView = 'catalog' | 'stores' | 'client' | 'owner'
+type AuthRoute = 'confirm' | 'reset-password' | null
 
 function App() {
   const [query, setQuery] = useState('')
@@ -86,9 +102,10 @@ function App() {
   const [source, setSource] = useState<CatalogSource>('demo')
   const [loadError, setLoadError] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
-  const [activeView, setActiveView] = useState<'catalog' | 'stores' | 'owner'>('catalog')
+  const [activeView, setActiveView] = useState<AppView>('catalog')
   const [session, setSession] = useState<AuthSession | null>(null)
   const [selectedBook, setSelectedBook] = useState<BookRecord | null>(null)
+  const authRoute = getAuthRoute()
 
   const refreshCatalog = useCallback(async (term = query) => {
     setLoading(true)
@@ -160,6 +177,25 @@ function App() {
     setActiveView('catalog')
   }
 
+  const refreshSession = useCallback(async () => {
+    setSession(await getCurrentSession())
+  }, [])
+
+  if (authRoute) {
+    return (
+      <AuthRoutePage
+        route={authRoute}
+        session={session}
+        onAuthChange={refreshSession}
+        onBack={() => {
+          const intent = getAuthIntentFromUrl()
+          window.history.replaceState({}, '', '/')
+          setActiveView(intent === 'store' ? 'owner' : 'client')
+        }}
+      />
+    )
+  }
+
   return (
     <div className="app-shell">
       <header className="topbar">
@@ -186,6 +222,13 @@ function App() {
             onClick={() => setActiveView('stores')}
           >
             Sebos
+          </button>
+          <button
+            className={activeView === 'client' ? 'nav-button active' : 'nav-button'}
+            type="button"
+            onClick={() => setActiveView('client')}
+          >
+            Cliente
           </button>
           <button
             className={activeView === 'owner' ? 'nav-button active' : 'nav-button'}
@@ -253,10 +296,22 @@ function App() {
             <StoresView books={books} stores={stores} onOpenStoreCatalog={openStoreCatalog} />
           )}
 
+          {activeView === 'client' && (
+            <ClientPanel
+              session={session}
+              onAuthChange={refreshSession}
+              onCatalogSearch={(term) => {
+                setQuery(term)
+                refreshCatalog(term)
+                setActiveView('catalog')
+              }}
+            />
+          )}
+
           {activeView === 'owner' && (
             <OwnerPanel
               session={session}
-              onAuthChange={async () => setSession(await getCurrentSession())}
+              onAuthChange={refreshSession}
               onCatalogChange={() => refreshCatalog(query)}
             />
           )}
@@ -266,6 +321,137 @@ function App() {
       {selectedBook && (
         <BookDetailDialog book={selectedBook} onClose={() => setSelectedBook(null)} />
       )}
+    </div>
+  )
+}
+
+function getAuthRoute(): AuthRoute {
+  if (typeof window === 'undefined') return null
+  if (window.location.pathname === '/auth/confirm') return 'confirm'
+  if (window.location.pathname === '/auth/reset-password') return 'reset-password'
+  return null
+}
+
+function getAuthIntentFromUrl(): AuthIntent {
+  if (typeof window === 'undefined') return 'customer'
+  const params = new URLSearchParams(window.location.search)
+  return params.get('intent') === 'store' ? 'store' : 'customer'
+}
+
+function AuthRoutePage({
+  route,
+  session,
+  onAuthChange,
+  onBack,
+}: {
+  route: Exclude<AuthRoute, null>
+  session: AuthSession | null
+  onAuthChange: () => Promise<void>
+  onBack: () => void
+}) {
+  const [password, setPassword] = useState('')
+  const [confirmPassword, setConfirmPassword] = useState('')
+  const [message, setMessage] = useState<string | null>(null)
+  const [saving, setSaving] = useState(false)
+  const intent = getAuthIntentFromUrl()
+  const errorMessage =
+    typeof window === 'undefined'
+      ? null
+      : new URLSearchParams(window.location.search).get('error_description') ??
+        new URLSearchParams(window.location.hash.replace(/^#/, '')).get('error_description')
+
+  useEffect(() => {
+    onAuthChange()
+  }, [onAuthChange])
+
+  const handlePasswordUpdate = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault()
+    if (password !== confirmPassword) {
+      setMessage('As senhas nao conferem.')
+      return
+    }
+
+    setSaving(true)
+    setMessage(null)
+    try {
+      await updatePassword(password)
+      await onAuthChange()
+      setMessage('Senha atualizada. Voce ja pode continuar usando sua conta.')
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : 'Nao foi possivel atualizar a senha.')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  return (
+    <div className="auth-page-shell">
+      <section className="auth-result-card">
+        <span className="brand-mark" aria-hidden="true">
+          {route === 'confirm' ? <Mail size={24} /> : <KeyRound size={24} />}
+        </span>
+
+        {route === 'confirm' ? (
+          <>
+            <p className="section-kicker">Confirmacao de email</p>
+            <h1>Email confirmado</h1>
+            <p>
+              {errorMessage
+                ? `O link retornou uma mensagem do Supabase: ${errorMessage}`
+                : session
+                  ? 'Sua sessao foi reconhecida. Agora voce pode acessar o painel certo para sua conta.'
+                  : 'Se o email foi confirmado, entre com seu email e senha para continuar.'}
+            </p>
+            <div className="dialog-actions">
+              <button className="primary-action" type="button" onClick={onBack}>
+                {intent === 'store' ? 'Ir para area do sebo' : 'Ir para minha conta'}
+              </button>
+              <a className="secondary-action" href="/">
+                Voltar ao catalogo
+              </a>
+            </div>
+          </>
+        ) : (
+          <>
+            <p className="section-kicker">Redefinir senha</p>
+            <h1>Crie uma nova senha</h1>
+            <p>Digite uma senha nova para concluir o retorno pelo email do Supabase.</p>
+            <form className="stack-form" onSubmit={handlePasswordUpdate}>
+              <label>
+                Nova senha
+                <input
+                  required
+                  minLength={6}
+                  type="password"
+                  value={password}
+                  onChange={(event) => setPassword(event.target.value)}
+                  placeholder="minimo 6 caracteres"
+                />
+              </label>
+              <label>
+                Confirmar senha
+                <input
+                  required
+                  minLength={6}
+                  type="password"
+                  value={confirmPassword}
+                  onChange={(event) => setConfirmPassword(event.target.value)}
+                  placeholder="repita a senha"
+                />
+              </label>
+              <button className="primary-action" disabled={saving} type="submit">
+                {saving ? <Loader2 className="spin" size={18} /> : <KeyRound size={18} />}
+                Atualizar senha
+              </button>
+            </form>
+            {message && <p className="form-message">{message}</p>}
+            <button className="secondary-action" type="button" onClick={onBack}>
+              <ArrowLeft size={18} />
+              Voltar ao site
+            </button>
+          </>
+        )}
+      </section>
     </div>
   )
 }
@@ -718,6 +904,355 @@ function StoresView({
   )
 }
 
+function AuthBox({
+  intent,
+  title,
+  description,
+  onAuthChange,
+}: {
+  intent: AuthIntent
+  title: string
+  description: string
+  onAuthChange: () => Promise<void>
+}) {
+  const [authMode, setAuthMode] = useState<'signin' | 'signup' | 'reset'>('signin')
+  const [email, setEmail] = useState('')
+  const [password, setPassword] = useState('')
+  const [displayName, setDisplayName] = useState('')
+  const [message, setMessage] = useState<string | null>(null)
+  const [saving, setSaving] = useState(false)
+
+  const handleAuth = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault()
+    setSaving(true)
+    setMessage(null)
+    try {
+      if (authMode === 'signin') {
+        await signIn(email, password)
+        setMessage('Login realizado.')
+        await onAuthChange()
+      } else if (authMode === 'signup') {
+        await signUp(email, password, displayName, intent)
+        setMessage('Conta criada. Confira seu email para confirmar o acesso.')
+        await onAuthChange()
+      } else {
+        await sendPasswordReset(email, intent)
+        setMessage('Enviamos um link para redefinir sua senha. Verifique seu email.')
+      }
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : 'Nao foi possivel concluir a acao.')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  return (
+    <section className="owner-card auth-card">
+      <div className="section-heading compact">
+        <div>
+          <p className="section-kicker">{intent === 'store' ? 'Area do sebo' : 'Conta do cliente'}</p>
+          <h2>{title}</h2>
+        </div>
+        <LogIn size={22} />
+      </div>
+      <p className="auth-copy">{description}</p>
+      <div className="segmented auth-segmented">
+        <button
+          className={authMode === 'signin' ? 'active' : ''}
+          type="button"
+          onClick={() => setAuthMode('signin')}
+        >
+          Entrar
+        </button>
+        <button
+          className={authMode === 'signup' ? 'active' : ''}
+          type="button"
+          onClick={() => setAuthMode('signup')}
+        >
+          Cadastrar
+        </button>
+        <button
+          className={authMode === 'reset' ? 'active' : ''}
+          type="button"
+          onClick={() => setAuthMode('reset')}
+        >
+          Senha
+        </button>
+      </div>
+      <form className="stack-form" onSubmit={handleAuth}>
+        {authMode === 'signup' && (
+          <label>
+            Nome
+            <input
+              required
+              value={displayName}
+              onChange={(event) => setDisplayName(event.target.value)}
+              placeholder={intent === 'store' ? 'Responsavel pelo sebo' : 'Seu nome'}
+            />
+          </label>
+        )}
+        <label>
+          Email
+          <input
+            required
+            type="email"
+            value={email}
+            onChange={(event) => setEmail(event.target.value)}
+            placeholder={intent === 'store' ? 'sebo@email.com' : 'cliente@email.com'}
+          />
+        </label>
+        {authMode !== 'reset' && (
+          <label>
+            Senha
+            <input
+              required
+              minLength={6}
+              type="password"
+              value={password}
+              onChange={(event) => setPassword(event.target.value)}
+              placeholder="minimo 6 caracteres"
+            />
+          </label>
+        )}
+        <button className="primary-action" disabled={saving} type="submit">
+          {saving ? (
+            <Loader2 className="spin" size={18} />
+          ) : authMode === 'reset' ? (
+            <KeyRound size={18} />
+          ) : (
+            <User size={18} />
+          )}
+          {authMode === 'signin'
+            ? 'Entrar'
+            : authMode === 'signup'
+              ? 'Criar conta'
+              : 'Enviar email'}
+        </button>
+      </form>
+      {message && <p className="form-message">{message}</p>}
+    </section>
+  )
+}
+
+function ClientPanel({
+  session,
+  onAuthChange,
+  onCatalogSearch,
+}: {
+  session: AuthSession | null
+  onAuthChange: () => Promise<void>
+  onCatalogSearch: (term: string) => void
+}) {
+  const [profile, setProfile] = useState<ProfileRecord | null>(null)
+  const [wishlist, setWishlist] = useState<WishlistRecord[]>([])
+  const [displayName, setDisplayName] = useState('')
+  const [wishlistTitle, setWishlistTitle] = useState('')
+  const [wishlistAuthor, setWishlistAuthor] = useState('')
+  const [message, setMessage] = useState<string | null>(null)
+  const [saving, setSaving] = useState(false)
+
+  const refreshClientData = useCallback(async () => {
+    if (!session) {
+      setProfile(null)
+      setWishlist([])
+      return
+    }
+
+    const [loadedProfile, loadedWishlist] = await Promise.all([
+      loadMyProfile(),
+      loadMyWishlist(),
+    ])
+    setProfile(loadedProfile)
+    setDisplayName(loadedProfile?.displayName ?? '')
+    setWishlist(loadedWishlist)
+  }, [session])
+
+  useEffect(() => {
+    void Promise.resolve().then(refreshClientData)
+  }, [refreshClientData])
+
+  const handleProfile = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault()
+    setSaving(true)
+    setMessage(null)
+    try {
+      await updateMyProfile(displayName)
+      await refreshClientData()
+      setMessage('Perfil atualizado.')
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : 'Nao foi possivel atualizar o perfil.')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  const handleWishlist = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault()
+    setSaving(true)
+    setMessage(null)
+    try {
+      await createWishlistItem(wishlistTitle, wishlistAuthor)
+      setWishlistTitle('')
+      setWishlistAuthor('')
+      await refreshClientData()
+      setMessage('Livro salvo na sua wishlist.')
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : 'Nao foi possivel salvar a wishlist.')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  const handleDeleteWishlist = async (id: string) => {
+    setSaving(true)
+    setMessage(null)
+    try {
+      await deleteWishlistItem(id)
+      await refreshClientData()
+      setMessage('Item removido da wishlist.')
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : 'Nao foi possivel remover o item.')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  if (!session) {
+    return (
+      <div className="owner-layout">
+        <AuthBox
+          intent="customer"
+          title="Entrar como cliente"
+          description="Crie sua conta para salvar livros desejados e acompanhar futuras notificacoes de acervo."
+          onAuthChange={onAuthChange}
+        />
+        <aside className="owner-note">
+          <Heart size={24} />
+          <h3>Wishlist do leitor</h3>
+          <p>
+            O cliente pode salvar livros que ainda nao encontrou e voltar ao catalogo
+            quando quiser pesquisar por eles.
+          </p>
+          <div className="owner-checklist" aria-label="Recursos do cliente">
+            <span>Busca salva</span>
+            <span>Perfil</span>
+            <span>Futuro alerta</span>
+          </div>
+        </aside>
+      </div>
+    )
+  }
+
+  return (
+    <div className="owner-layout">
+      <section className="owner-card">
+        <div className="section-heading compact">
+          <div>
+            <p className="section-kicker">Conta do cliente</p>
+            <h2>{profile?.displayName ?? session.user.email}</h2>
+          </div>
+          <button
+            className="icon-button"
+            type="button"
+            title="Sair"
+            onClick={async () => {
+              await signOut()
+              await onAuthChange()
+            }}
+          >
+            <User size={18} />
+          </button>
+        </div>
+
+        <form className="stack-form" onSubmit={handleProfile}>
+          <label>
+            Nome no perfil
+            <input
+              required
+              value={displayName}
+              onChange={(event) => setDisplayName(event.target.value)}
+            />
+          </label>
+          <button className="primary-action" disabled={saving} type="submit">
+            {saving ? <Loader2 className="spin" size={18} /> : <CheckCircle2 size={18} />}
+            Salvar perfil
+          </button>
+        </form>
+
+        <div className="panel-divider" />
+
+        <form className="stack-form" onSubmit={handleWishlist}>
+          <div className="section-heading compact">
+            <div>
+              <p className="section-kicker">Wishlist</p>
+              <h3>Salvar livro desejado</h3>
+            </div>
+          </div>
+          <label>
+            Titulo
+            <input
+              required
+              value={wishlistTitle}
+              onChange={(event) => setWishlistTitle(event.target.value)}
+              placeholder="Ex: Ensaio sobre a cegueira"
+            />
+          </label>
+          <label>
+            Autor
+            <input
+              value={wishlistAuthor}
+              onChange={(event) => setWishlistAuthor(event.target.value)}
+              placeholder="Opcional"
+            />
+          </label>
+          <button className="primary-action" disabled={saving} type="submit">
+            {saving ? <Loader2 className="spin" size={18} /> : <Heart size={18} />}
+            Salvar na wishlist
+          </button>
+        </form>
+        {message && <p className="form-message">{message}</p>}
+      </section>
+
+      <aside className="owner-note wishlist-note">
+        <Heart size={24} />
+        <h3>Livros desejados</h3>
+        {wishlist.length === 0 ? (
+          <p>Nenhum livro salvo ainda. Adicione um titulo para acompanhar depois.</p>
+        ) : (
+          <div className="wishlist-list">
+            {wishlist.map((item) => (
+              <div className="wishlist-item" key={item.id}>
+                <div>
+                  <strong>{item.title}</strong>
+                  {item.author && <span>{item.author}</span>}
+                </div>
+                <div className="wishlist-actions">
+                  <button
+                    className="icon-button"
+                    type="button"
+                    title="Buscar no catalogo"
+                    onClick={() => onCatalogSearch([item.title, item.author].filter(Boolean).join(' '))}
+                  >
+                    <Search size={16} />
+                  </button>
+                  <button
+                    className="icon-button"
+                    type="button"
+                    title="Remover"
+                    onClick={() => handleDeleteWishlist(item.id)}
+                  >
+                    <Trash2 size={16} />
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </aside>
+    </div>
+  )
+}
+
 function OwnerPanel({
   session,
   onAuthChange,
@@ -727,10 +1262,6 @@ function OwnerPanel({
   onAuthChange: () => Promise<void>
   onCatalogChange: () => void
 }) {
-  const [authMode, setAuthMode] = useState<'signin' | 'signup'>('signin')
-  const [email, setEmail] = useState('')
-  const [password, setPassword] = useState('')
-  const [displayName, setDisplayName] = useState('')
   const [store, setStore] = useState<StoreRecord | null>(null)
   const [message, setMessage] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
@@ -774,26 +1305,6 @@ function OwnerPanel({
     }
   }, [session])
 
-  const handleAuth = async (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault()
-    setSaving(true)
-    setMessage(null)
-    try {
-      if (authMode === 'signin') {
-        await signIn(email, password)
-        setMessage('Login realizado.')
-      } else {
-        await signUp(email, password, displayName)
-        setMessage('Conta criada. Confirme o email se o Supabase exigir.')
-      }
-      await onAuthChange()
-    } catch (error) {
-      setMessage(error instanceof Error ? error.message : 'Nao foi possivel autenticar.')
-    } finally {
-      setSaving(false)
-    }
-  }
-
   const handleStore = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
     setSaving(true)
@@ -836,70 +1347,12 @@ function OwnerPanel({
   if (!session) {
     return (
       <div className="owner-layout">
-        <section className="owner-card">
-          <div className="section-heading compact">
-            <div>
-              <p className="section-kicker">Area do sebo</p>
-              <h2>{authMode === 'signin' ? 'Entrar no painel' : 'Criar conta'}</h2>
-            </div>
-            <LogIn size={22} />
-          </div>
-          <div className="segmented">
-            <button
-              className={authMode === 'signin' ? 'active' : ''}
-              type="button"
-              onClick={() => setAuthMode('signin')}
-            >
-              Entrar
-            </button>
-            <button
-              className={authMode === 'signup' ? 'active' : ''}
-              type="button"
-              onClick={() => setAuthMode('signup')}
-            >
-              Cadastrar
-            </button>
-          </div>
-          <form className="stack-form" onSubmit={handleAuth}>
-            {authMode === 'signup' && (
-              <label>
-                Nome
-                <input
-                  required
-                  value={displayName}
-                  onChange={(event) => setDisplayName(event.target.value)}
-                  placeholder="Responsavel pelo sebo"
-                />
-              </label>
-            )}
-            <label>
-              Email
-              <input
-                required
-                type="email"
-                value={email}
-                onChange={(event) => setEmail(event.target.value)}
-                placeholder="sebo@email.com"
-              />
-            </label>
-            <label>
-              Senha
-              <input
-                required
-                minLength={6}
-                type="password"
-                value={password}
-                onChange={(event) => setPassword(event.target.value)}
-                placeholder="minimo 6 caracteres"
-              />
-            </label>
-            <button className="primary-action" disabled={saving} type="submit">
-              {saving ? <Loader2 className="spin" size={18} /> : <User size={18} />}
-              {authMode === 'signin' ? 'Entrar' : 'Criar conta'}
-            </button>
-          </form>
-          {message && <p className="form-message">{message}</p>}
-        </section>
+        <AuthBox
+          intent="store"
+          title="Entrar no painel"
+          description="Acesse sua conta para cadastrar o sebo, enviar o perfil para aprovacao e publicar livros no acervo."
+          onAuthChange={onAuthChange}
+        />
 
         <aside className="owner-note">
           <ShieldCheck size={24} />
