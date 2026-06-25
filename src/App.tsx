@@ -46,6 +46,7 @@ import {
   deleteWishlistItem,
   getCurrentSession,
   loadCatalog,
+  loadAdminStores,
   loadMyBooks,
   loadMyStore,
   loadMyProfile,
@@ -58,6 +59,7 @@ import {
   updateMyProfile,
   updateBook,
   updatePassword,
+  setStoreApproval,
 } from './lib/catalog'
 import { isSupabaseConfigured } from './lib/supabase'
 import type { AuthSession } from './lib/supabase'
@@ -112,7 +114,7 @@ const getWhatsappUrl = (book: BookRecord) =>
     : undefined
 
 type CatalogSortMode = 'recent' | 'price-asc' | 'price-desc' | 'title'
-type AppView = 'catalog' | 'stores' | 'client' | 'owner'
+type AppView = 'catalog' | 'stores' | 'client' | 'owner' | 'admin'
 type AuthRoute = 'confirm' | 'reset-password' | null
 
 function App() {
@@ -124,6 +126,7 @@ function App() {
   const [loading, setLoading] = useState(true)
   const [activeView, setActiveView] = useState<AppView>('catalog')
   const [session, setSession] = useState<AuthSession | null>(null)
+  const [profile, setProfile] = useState<ProfileRecord | null>(null)
   const [selectedBook, setSelectedBook] = useState<BookRecord | null>(null)
   const authRoute = getAuthRoute()
 
@@ -149,9 +152,19 @@ function App() {
       setLoading(false)
     })
 
-    getCurrentSession().then(setSession)
+    async function loadIdentity() {
+      const currentSession = await getCurrentSession()
+      if (!active) return
+
+      setSession(currentSession)
+      setProfile(currentSession ? await loadMyProfile() : null)
+    }
+
+    loadIdentity()
     const unsubscribe = subscribeToAuth(async () => {
-      setSession(await getCurrentSession())
+      const currentSession = await getCurrentSession()
+      setSession(currentSession)
+      setProfile(currentSession ? await loadMyProfile() : null)
     })
 
     return () => {
@@ -198,7 +211,9 @@ function App() {
   }
 
   const refreshSession = useCallback(async () => {
-    setSession(await getCurrentSession())
+    const currentSession = await getCurrentSession()
+    setSession(currentSession)
+    setProfile(currentSession ? await loadMyProfile() : null)
   }, [])
 
   if (authRoute) {
@@ -257,6 +272,15 @@ function App() {
           >
             Area do sebo
           </button>
+          {profile?.role === 'ADMIN' && (
+            <button
+              className={activeView === 'admin' ? 'nav-button active' : 'nav-button'}
+              type="button"
+              onClick={() => setActiveView('admin')}
+            >
+              Admin
+            </button>
+          )}
         </nav>
       </header>
 
@@ -331,6 +355,15 @@ function App() {
           {activeView === 'owner' && (
             <OwnerPanel
               session={session}
+              onAuthChange={refreshSession}
+              onCatalogChange={() => refreshCatalog(query)}
+            />
+          )}
+
+          {activeView === 'admin' && (
+            <AdminPanel
+              session={session}
+              profile={profile}
               onAuthChange={refreshSession}
               onCatalogChange={() => refreshCatalog(query)}
             />
@@ -1583,7 +1616,26 @@ function OwnerPanel({
           </form>
         )}
 
-        {store && (
+        {store && !store.approved && (
+          <div className="verification-card">
+            <ShieldCheck size={28} />
+            <div>
+              <p className="section-kicker">Analise obrigatoria</p>
+              <h3>Sebo aguardando aprovacao</h3>
+              <p>
+                A administracao precisa verificar o cadastro antes da publicacao de livros.
+                Enquanto isso, revise endereco, telefone e horario para evitar reprova.
+              </p>
+            </div>
+            <div className="owner-checklist" aria-label="Fluxo de verificacao">
+              <span>Cadastro enviado</span>
+              <span>Analise admin</span>
+              <span>Acervo liberado</span>
+            </div>
+          </div>
+        )}
+
+        {store && store.approved && (
           <form className="stack-form" onSubmit={handleBook}>
             <div className="store-status-strip" aria-label="Resumo do sebo">
               <span className={store.approved ? 'approved' : ''}>
@@ -1760,7 +1812,11 @@ function OwnerPanel({
           <Upload size={24} />
           <div>
             <h3>Meu acervo</h3>
-            <p>Controle o que aparece no catalogo e ajuste estoque sem sair do site.</p>
+            <p>
+              {store?.approved
+                ? 'Controle o que aparece no catalogo e ajuste estoque sem sair do site.'
+                : 'O acervo sera liberado depois que a administracao aprovar o sebo.'}
+            </p>
           </div>
         </div>
 
@@ -1871,6 +1927,310 @@ function OwnerPanel({
             </div>
           </>
         )}
+      </aside>
+    </div>
+  )
+}
+
+function AdminPanel({
+  session,
+  profile,
+  onAuthChange,
+  onCatalogChange,
+}: {
+  session: AuthSession | null
+  profile: ProfileRecord | null
+  onAuthChange: () => Promise<void>
+  onCatalogChange: () => void
+}) {
+  const [reviewStores, setReviewStores] = useState<StoreRecord[]>([])
+  const [statusFilter, setStatusFilter] = useState<'pending' | 'approved' | 'all'>('pending')
+  const [message, setMessage] = useState<string | null>(null)
+  const [loadingReview, setLoadingReview] = useState(false)
+  const [savingStoreId, setSavingStoreId] = useState<string | null>(null)
+
+  const refreshReviewStores = useCallback(async () => {
+    setLoadingReview(true)
+    setMessage(null)
+    try {
+      setReviewStores(await loadAdminStores())
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : 'Nao foi possivel carregar os sebos.')
+    } finally {
+      setLoadingReview(false)
+    }
+  }, [])
+
+  useEffect(() => {
+    if (!session || profile?.role !== 'ADMIN') {
+      return
+    }
+
+    Promise.resolve().then(refreshReviewStores)
+  }, [profile?.role, refreshReviewStores, session])
+
+  const reviewStats = useMemo(() => {
+    const pending = reviewStores.filter((store) => !store.approved).length
+    const approved = reviewStores.filter((store) => store.approved).length
+
+    return {
+      pending,
+      approved,
+      total: reviewStores.length,
+    }
+  }, [reviewStores])
+
+  const visibleReviewStores = useMemo(() => {
+    if (statusFilter === 'pending') return reviewStores.filter((store) => !store.approved)
+    if (statusFilter === 'approved') return reviewStores.filter((store) => store.approved)
+    return reviewStores
+  }, [reviewStores, statusFilter])
+
+  const handleApproval = async (store: StoreRecord, approved: boolean) => {
+    setSavingStoreId(store.id)
+    setMessage(null)
+    try {
+      await setStoreApproval(store.id, approved)
+      await refreshReviewStores()
+      onCatalogChange()
+      setMessage(approved ? 'Sebo aprovado e liberado para cadastrar livros.' : 'Sebo voltou para analise.')
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : 'Nao foi possivel atualizar o sebo.')
+    } finally {
+      setSavingStoreId(null)
+    }
+  }
+
+  if (!session) {
+    return (
+      <div className="owner-layout">
+        <AuthBox
+          intent="customer"
+          title="Entrar como administrador"
+          description="Acesse uma conta com permissao ADMIN para revisar cadastros de sebos antes da publicacao do acervo."
+          onAuthChange={onAuthChange}
+        />
+
+        <aside className="owner-note">
+          <ShieldCheck size={24} />
+          <h3>Fluxo de verificacao</h3>
+          <p>
+            O sebo envia cadastro, a administracao confere os dados e so depois libera
+            a criacao de livros no catalogo.
+          </p>
+          <div className="owner-checklist" aria-label="Etapas da analise">
+            <span>Pendente</span>
+            <span>Aprovado</span>
+            <span>Acervo liberado</span>
+          </div>
+        </aside>
+      </div>
+    )
+  }
+
+  if (!profile) {
+    return (
+      <div className="empty-state">
+        <Loader2 className="spin" size={22} />
+        Carregando permissao...
+      </div>
+    )
+  }
+
+  if (profile.role !== 'ADMIN') {
+    return (
+      <div className="owner-layout">
+        <section className="owner-card">
+          <div className="section-heading compact">
+            <div>
+              <p className="section-kicker">Acesso restrito</p>
+              <h2>Painel administrativo</h2>
+            </div>
+            <button
+              className="icon-button"
+              type="button"
+              title="Sair"
+              onClick={async () => {
+                await signOut()
+                await onAuthChange()
+              }}
+            >
+              <User size={18} />
+            </button>
+          </div>
+          <p className="auth-copy">
+            Sua conta esta autenticada, mas nao possui a permissao `ADMIN`. Apenas
+            administradores podem aprovar sebos.
+          </p>
+        </section>
+
+        <aside className="owner-note">
+          <AlertTriangle size={24} />
+          <h3>Permissao necessaria</h3>
+          <p>
+            Para liberar este painel, atualize o perfil da conta no Supabase para role
+            `ADMIN`.
+          </p>
+        </aside>
+      </div>
+    )
+  }
+
+  return (
+    <div className="admin-layout">
+      <section className="owner-card admin-review-card">
+        <div className="section-heading compact">
+          <div>
+            <p className="section-kicker">Administracao</p>
+            <h2>Analise de sebos</h2>
+          </div>
+          <div className="section-actions">
+            <button className="secondary-action compact-action" type="button" onClick={refreshReviewStores}>
+              {loadingReview ? <Loader2 className="spin" size={16} /> : <RefreshCw size={16} />}
+              Atualizar
+            </button>
+            <button
+              className="icon-button"
+              type="button"
+              title="Sair"
+              onClick={async () => {
+                await signOut()
+                await onAuthChange()
+              }}
+            >
+              <User size={18} />
+            </button>
+          </div>
+        </div>
+
+        <div className="admin-stats" aria-label="Resumo administrativo">
+          <span>
+            <AlertTriangle size={16} />
+            <strong>{reviewStats.pending}</strong>
+            Pendentes
+          </span>
+          <span>
+            <CheckCircle2 size={16} />
+            <strong>{reviewStats.approved}</strong>
+            Aprovados
+          </span>
+          <span>
+            <Store size={16} />
+            <strong>{reviewStats.total}</strong>
+            Total
+          </span>
+        </div>
+
+        <div className="segmented admin-filter" aria-label="Filtro de sebos">
+          <button
+            className={statusFilter === 'pending' ? 'active' : ''}
+            type="button"
+            onClick={() => setStatusFilter('pending')}
+          >
+            Pendentes
+          </button>
+          <button
+            className={statusFilter === 'approved' ? 'active' : ''}
+            type="button"
+            onClick={() => setStatusFilter('approved')}
+          >
+            Aprovados
+          </button>
+          <button
+            className={statusFilter === 'all' ? 'active' : ''}
+            type="button"
+            onClick={() => setStatusFilter('all')}
+          >
+            Todos
+          </button>
+        </div>
+
+        {visibleReviewStores.length === 0 ? (
+          <div className="empty-state">
+            <ShieldCheck size={22} />
+            Nenhum sebo neste filtro.
+          </div>
+        ) : (
+          <div className="admin-store-list">
+            {visibleReviewStores.map((store) => (
+              <article className="admin-store-item" key={store.id}>
+                <div className="admin-store-main">
+                  <div className="store-status-strip">
+                    <span className={store.approved ? 'approved' : ''}>
+                      {store.approved ? 'Aprovado' : 'Pendente'}
+                    </span>
+                    <span>{new Date(store.createdAt ?? '').toLocaleDateString('pt-BR')}</span>
+                  </div>
+                  <h3>{store.name}</h3>
+                  {store.description && <p>{store.description}</p>}
+                  <div className="admin-store-meta">
+                    <span>
+                      <MapPin size={15} />
+                      {store.address}, {store.city} - {store.state}
+                    </span>
+                    <span>
+                      <Phone size={15} />
+                      {store.phone}
+                    </span>
+                    {store.openingHours && (
+                      <span>
+                        <Calendar size={15} />
+                        {store.openingHours}
+                      </span>
+                    )}
+                  </div>
+                </div>
+                <div className="admin-store-actions">
+                  {!store.approved ? (
+                    <button
+                      className="primary-action"
+                      disabled={savingStoreId === store.id}
+                      type="button"
+                      onClick={() => handleApproval(store, true)}
+                    >
+                      {savingStoreId === store.id ? (
+                        <Loader2 className="spin" size={18} />
+                      ) : (
+                        <CheckCircle2 size={18} />
+                      )}
+                      Aprovar
+                    </button>
+                  ) : (
+                    <button
+                      className="secondary-action"
+                      disabled={savingStoreId === store.id}
+                      type="button"
+                      onClick={() => handleApproval(store, false)}
+                    >
+                      {savingStoreId === store.id ? (
+                        <Loader2 className="spin" size={18} />
+                      ) : (
+                        <X size={18} />
+                      )}
+                      Voltar para analise
+                    </button>
+                  )}
+                </div>
+              </article>
+            ))}
+          </div>
+        )}
+
+        {message && <p className="form-message">{message}</p>}
+      </section>
+
+      <aside className="owner-note admin-note">
+        <ShieldCheck size={24} />
+        <h3>Regra do fluxo</h3>
+        <p>
+          O cadastro do sebo nasce pendente. O lojista so ve o formulario de livros
+          depois da aprovacao, e o banco tambem bloqueia criacao de livros antes disso.
+        </p>
+        <div className="owner-checklist" aria-label="Protecoes do fluxo">
+          <span>RLS</span>
+          <span>ADMIN</span>
+          <span>Aprovacao</span>
+        </div>
       </aside>
     </div>
   )

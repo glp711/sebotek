@@ -14,7 +14,8 @@ MVP do TCC para busca agregada de livros em sebos independentes, usando React, T
 - Filtros por categoria e estado do livro, com ordenacao por preco, titulo ou recentes.
 - Pagina de sebos parceiros com status de verificacao, localizacao, telefone e resumo do acervo.
 - Conta do cliente com login, cadastro, recuperacao de senha, perfil e wishlist.
-- Area do sebo com login, cadastro por email, recuperacao de senha, cadastro do sebo para aprovacao e CRUD de livros com busca, edicao, remocao e controle de estoque.
+- Area do sebo com login, cadastro por email, recuperacao de senha, cadastro do sebo para aprovacao e CRUD de livros liberado somente apos aprovacao administrativa.
+- Painel administrativo para listar sebos pendentes, aprovar cadastros e voltar sebos para analise.
 - Paginas de retorno do Supabase Auth para confirmacao de email e redefinicao de senha.
 
 ## Arquitetura
@@ -51,7 +52,7 @@ Ela cria uma arquitetura Supabase-native com:
 - `wishlist_matches`
 - buckets `book-covers` e `store-photos`
 - RLS em todas as tabelas publicas
-- politicas para leitura publica do catalogo aprovado e escrita restrita por usuario/sebo
+- politicas para leitura publica do catalogo aprovado, aprovacao por ADMIN e escrita restrita por usuario/sebo
 
 ## Comandos uteis
 

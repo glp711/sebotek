@@ -14,6 +14,8 @@ import { isSupabaseConfigured, supabase } from './supabase'
 const publicStoreColumns =
   'id,name,slug,description,address,city,state,zip_code,phone,opening_hours,photo_url,latitude,longitude,approved,created_at,updated_at'
 
+const adminStoreColumns = `${publicStoreColumns},owner_id`
+
 const legacyStoreColumns =
   'id,name,slug,description,address,city,state,zipCode,phone,openingHours,photoUrl,latitude,longitude,approved,ownerId,createdAt,updatedAt'
 
@@ -305,6 +307,31 @@ export async function loadMyStore(): Promise<StoreRecord | null> {
   return data ? normalizeStore(data) : null
 }
 
+export async function loadAdminStores(): Promise<StoreRecord[]> {
+  if (!supabase) return []
+
+  const { data, error } = await supabase
+    .from('stores')
+    .select(adminStoreColumns)
+    .order('approved', { ascending: true })
+    .order('created_at', { ascending: false })
+
+  if (error) throw error
+  return (data ?? []).map((row) => normalizeStore(row))
+}
+
+export async function setStoreApproval(storeId: string, approved: boolean) {
+  if (!supabase) throw new Error('Configure o Supabase no arquivo .env.local.')
+  if (!storeId) throw new Error('Escolha um sebo para analisar.')
+
+  const { error } = await supabase
+    .from('stores')
+    .update({ approved })
+    .eq('id', storeId)
+
+  if (error) throw error
+}
+
 export async function createStoreRequest(draft: StoreDraft) {
   if (!supabase) throw new Error('Configure o Supabase no arquivo .env.local.')
   const {
@@ -339,6 +366,17 @@ export async function createStoreRequest(draft: StoreDraft) {
 export async function createBook(storeId: string, draft: BookDraft) {
   if (!supabase) throw new Error('Configure o Supabase no arquivo .env.local.')
   if (!storeId) throw new Error('Cadastre ou carregue seu sebo antes de cadastrar livros.')
+
+  const { data: storeData, error: storeError } = await supabase
+    .from('stores')
+    .select('approved')
+    .eq('id', storeId)
+    .maybeSingle()
+
+  if (storeError) throw storeError
+  if (!storeData?.approved) {
+    throw new Error('Seu sebo precisa ser aprovado pela administracao antes de cadastrar livros.')
+  }
 
   const { error } = await supabase.from('books').insert({
     store_id: storeId,

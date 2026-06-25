@@ -52,7 +52,8 @@ Funcionalidades da area de sebos:
 - Cadastro e login do responsavel.
 - Recuperacao de senha.
 - Cadastro do sebo para aprovacao.
-- Cadastro de livros.
+- Bloqueio de cadastro de livros enquanto o sebo esta em analise.
+- Cadastro de livros apos aprovacao administrativa.
 - Edicao de livros ja cadastrados.
 - Remocao de livros.
 - Busca dentro do proprio acervo.
@@ -75,6 +76,14 @@ Funcionalidades de autenticacao:
 - Paginas especificas para retorno do Supabase Auth:
   - `/auth/confirm`
   - `/auth/reset-password`
+
+Funcionalidades administrativas:
+
+- Painel `Admin` visivel para contas com role `ADMIN`.
+- Listagem de sebos pendentes, aprovados e todos.
+- Botao para aprovar cadastro de sebo.
+- Botao para voltar um sebo aprovado para analise.
+- Regras no banco impedindo que lojistas criem livros antes da aprovacao.
 
 ## Arquitetura do sistema
 
@@ -165,8 +174,9 @@ Exemplos no projeto:
 
 - O publico pode ler livros de sebos aprovados e com estoque.
 - O dono do sebo pode ler todos os proprios livros, inclusive sem estoque.
-- O dono do sebo so pode criar livros dentro do proprio sebo.
+- O dono do sebo so pode criar livros dentro do proprio sebo depois que ele for aprovado.
 - O dono do sebo so pode editar ou apagar livros do proprio sebo.
+- O admin pode analisar e alterar o status de aprovacao dos sebos.
 - O cliente so pode ver e alterar a propria wishlist.
 
 Ponto importante para responder:
@@ -188,11 +198,21 @@ Nao usamos chave secreta no frontend. O navegador usa apenas a chave publica/pub
 1. Entra em `Area do sebo`.
 2. Cria uma conta ou faz login.
 3. Cadastra o sebo com nome, endereco, telefone e horario.
-4. Aguarda aprovacao.
-5. Cadastra livros no acervo.
+4. Aguarda aprovacao administrativa.
+5. Depois da aprovacao, cadastra livros no acervo.
 6. Edita livros quando mudar preco, estoque ou informacoes.
 7. Remove livros que nao devem mais aparecer.
 8. Controla estoque pelo painel `Meu acervo`.
+
+## Fluxo do administrador
+
+1. Entra no sistema com uma conta `ADMIN`.
+2. Abre a aba `Admin`.
+3. Ve os sebos pendentes de verificacao.
+4. Confere nome, descricao, endereco, telefone e horario.
+5. Aprova o sebo quando estiver correto.
+6. Se houver problema, mantem pendente ou volta um sebo aprovado para analise.
+7. Depois da aprovacao, o lojista consegue cadastrar livros.
 
 ## Fluxo de autenticacao
 
@@ -274,8 +294,9 @@ Roteiro sugerido:
 9. Entrar em `Cliente` e explicar login, perfil e wishlist.
 10. Entrar em `Area do sebo`.
 11. Explicar cadastro do sebo e painel de acervo.
-12. Explicar que o banco usa Supabase, Auth, Postgres e RLS.
-13. Mostrar rapidamente o GitHub ou as migrations se o professor pedir parte tecnica.
+12. Entrar no painel `Admin` e explicar a aprovacao dos sebos.
+13. Explicar que o banco usa Supabase, Auth, Postgres e RLS.
+14. Mostrar rapidamente o GitHub ou as migrations se o professor pedir parte tecnica.
 
 ## Perguntas provaveis do professor
 
@@ -321,7 +342,11 @@ O banco e o Storage ja possuem estrutura prevista para capas de livros e fotos d
 
 ### Como funciona a aprovacao do sebo?
 
-O sebo e cadastrado com status de aprovacao. A ideia e que uma area administrativa aprove os sebos antes da exibicao publica. No MVP, essa aprovacao pode ser feita pelo painel do Supabase.
+O sebo e cadastrado como pendente. Uma conta com role `ADMIN` acessa o painel administrativo, revisa os dados e aprova o cadastro. Antes da aprovacao, o lojista nao consegue cadastrar livros. Essa regra existe na interface e tambem nas policies do Supabase.
+
+### O lojista consegue se aprovar sozinho?
+
+Nao. A permissao de aprovar fica restrita a contas com role `ADMIN`. O dono do sebo consegue cadastrar o proprio sebo, mas nao consegue alterar o status `approved` para liberar produtos.
 
 ### Por que livros sem estoque nao aparecem publicamente?
 
@@ -341,9 +366,9 @@ Pessoa 1: problema, objetivo, publico-alvo e demonstracao do catalogo.
 
 Pessoa 2: area do cliente, login, wishlist e fluxo de recuperacao de senha.
 
-Pessoa 3: area do sebo, cadastro do estabelecimento e CRUD de livros.
+Pessoa 3: area do sebo, cadastro do estabelecimento, aprovacao e CRUD de livros.
 
-Pessoa 4: arquitetura, Supabase, banco, RLS, Vercel e GitHub.
+Pessoa 4: painel administrativo, arquitetura, Supabase, banco, RLS, Vercel e GitHub.
 
 Se o grupo for menor, uma pessoa pode ficar com produto e telas, outra com parte tecnica.
 
@@ -355,12 +380,12 @@ Se o grupo for menor, uma pessoa pode ficar com produto e telas, outra com parte
 - Login e recuperacao de senha funcionam via Supabase Auth.
 - Existem regras de seguranca no banco.
 - Interface tem catalogo, filtros, modal e painel do lojista.
+- Existe fluxo de verificacao administrativa antes da criacao de produtos.
 - O projeto tem documentacao e migrations.
 - A arquitetura pode crescer para incluir Node/Express se necessario.
 
 ## Limitacoes atuais
 
-- Aprovacao administrativa ainda nao tem tela propria.
 - Upload direto de capas ainda nao foi implementado na interface.
 - Reservas ainda nao foram implementadas.
 - Notificacao automatica de wishlist ainda e uma melhoria futura.
@@ -368,7 +393,7 @@ Se o grupo for menor, uma pessoa pode ficar com produto e telas, outra com parte
 
 ## Melhorias futuras
 
-- Painel administrativo para aprovar sebos.
+- Historico de analise com motivo de aprovacao/reprova.
 - Upload de capas usando Supabase Storage.
 - Reserva de livros.
 - Notificacao quando um livro da wishlist aparecer.
@@ -380,4 +405,3 @@ Se o grupo for menor, uma pessoa pode ficar com produto e telas, outra com parte
 ## Frase curta para apresentar
 
 O Sebo Virtual e uma plataforma web que conecta leitores a sebos independentes, permitindo pesquisar livros usados, visualizar detalhes do exemplar e entrar em contato pelo WhatsApp, enquanto o sebo consegue gerenciar seu acervo em um painel proprio com seguranca usando Supabase.
-

@@ -51,7 +51,8 @@ O sistema e um MVP de TCC para centralizar catalogos de sebos independentes. A i
    - WhatsApp.
    - Horario de funcionamento.
 5. Envie o cadastro para aprovacao.
-6. Depois de carregar o sebo associado a conta, cadastre livros informando:
+6. Aguarde a analise administrativa. Antes da aprovacao, o painel mostra que o sebo esta em verificacao e bloqueia o cadastro de livros.
+7. Depois da aprovacao, cadastre livros informando:
    - Titulo.
    - Autor.
    - ISBN.
@@ -63,15 +64,23 @@ O sistema e um MVP de TCC para centralizar catalogos de sebos independentes. A i
    - Estado de conservacao.
    - Preco.
    - Quantidade.
-7. Use o painel `Meu acervo` para:
+8. Use o painel `Meu acervo` para:
    - Ver total de titulos, exemplares, livros sem estoque e livros com capa.
    - Buscar livros do proprio sebo.
    - Editar dados de um livro ja cadastrado.
    - Remover um livro do acervo.
 
-Livros de sebos ainda nao aprovados continuam no painel do responsavel, mas a exibicao publica do catalogo depende das regras de aprovacao do banco.
+Livros so podem ser criados depois que o sebo for aprovado. Essa regra aparece na interface e tambem e protegida no banco por RLS.
 
-No MVP atual, a aprovacao administrativa do sebo ainda nao tem uma tela propria. Essa validacao pode ser feita diretamente no Supabase enquanto a area administrativa nao for criada.
+## Como usar o painel administrativo
+
+1. Entre com uma conta que tenha role `ADMIN` na tabela `profiles`.
+2. Apos o login, clique em `Admin` no menu superior.
+3. Use os filtros `Pendentes`, `Aprovados` e `Todos`.
+4. Clique em `Aprovar` para liberar um sebo verificado.
+5. Clique em `Voltar para analise` se um sebo precisar ser bloqueado novamente.
+
+Somente contas com role `ADMIN` conseguem acessar a lista administrativa e alterar o status de aprovacao. O responsavel pelo sebo nao consegue aprovar o proprio cadastro.
 
 ## Login, confirmacao de email e recuperacao de senha
 
@@ -117,7 +126,8 @@ Sem essas URLs liberadas, o Supabase pode bloquear o redirecionamento ou mandar 
 5. Entrar na aba `Sebos` e mostrar os cards dos sebos parceiros.
 6. Clicar em `Ver acervo` em um sebo.
 7. Abrir a `Area do sebo` e explicar o fluxo de cadastro, aprovacao e publicacao de livros.
-8. Explicar que o backend usa Supabase com Auth, Postgres, RLS e Storage.
+8. Abrir o painel `Admin` com uma conta administradora e mostrar a analise dos cadastros.
+9. Explicar que o backend usa Supabase com Auth, Postgres, RLS e Storage.
 
 ## Como rodar localmente
 
@@ -228,7 +238,7 @@ npm run lint
 
 ## Melhorias futuras
 
-- Tela administrativa para aprovar sebos.
+- Historico de aprovacao com motivo de reprova.
 - Upload de capas pelo painel do sebo.
 - Upload de capas direto para o bucket `book-covers`.
 - Notificacao automatica quando um livro desejado aparecer na wishlist.
