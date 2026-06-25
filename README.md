@@ -5,6 +5,7 @@ MVP do TCC para busca agregada de livros em sebos independentes, usando React, T
 ## Documentacao
 
 - [Guia de uso do Sebo Virtual](docs/guia-de-uso.md)
+- [Guia de estudo para apresentacao](docs/guia-estudo-apresentacao.md)
 
 ## Funcionalidades atuais
 
