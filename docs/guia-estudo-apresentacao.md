@@ -8,6 +8,8 @@ O Sebo Virtual e um sistema web para reunir catalogos de sebos independentes em 
 
 O projeto e um MVP de TCC. MVP significa Minimum Viable Product, ou seja, uma primeira versao funcional com as principais partes do sistema.
 
+O site tambem integra o widget VLibras do gov.br como apoio de acessibilidade, permitindo traducao automatica de conteudos em portugues para Libras.
+
 Links principais:
 
 - Site em producao: https://sebo-virtual.vercel.app/
@@ -84,6 +86,10 @@ Funcionalidades administrativas:
 - Botao para aprovar cadastro de sebo.
 - Botao para voltar um sebo aprovado para analise.
 - Regras no banco impedindo que lojistas criem livros antes da aprovacao.
+
+Funcionalidade de acessibilidade:
+
+- Widget VLibras do gov.br para apoio de traducao automatica de conteudos em portugues para Libras.
 
 ## Arquitetura do sistema
 

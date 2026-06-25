@@ -9,6 +9,8 @@ Este guia explica como usar o Sebo Virtual como leitor, como responsavel por um 
 
 O sistema e um MVP de TCC para centralizar catalogos de sebos independentes. A ideia principal e permitir que o leitor encontre livros usados em diferentes sebos e fale diretamente com o estabelecimento que possui o exemplar.
 
+O site tambem inclui o widget VLibras do gov.br para apoiar acessibilidade, permitindo traducao automatica de conteudos em portugues para Libras.
+
 ## Como usar como leitor
 
 1. Acesse https://sebo-virtual.vercel.app/
