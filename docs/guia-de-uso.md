@@ -128,6 +128,21 @@ O Supabase limita o provedor de email padrao a poucos envios por hora. Se aparec
 
 Para destravar na hora, aguarde o limite renovar antes de testar novos cadastros. Para resolver de forma definitiva em producao, configure SMTP proprio em `Authentication > Emails > SMTP Settings` e depois ajuste os limites em `Authentication > Rate Limits`.
 
+### Configurando Resend como SMTP
+
+O Resend pode ser usado como provedor de email do Supabase Auth. Primeiro, crie uma conta no Resend, adicione um dominio e aguarde a verificacao dos registros DNS. Depois, crie uma API key em `https://resend.com/api-keys`.
+
+No Supabase, abra `Authentication > Emails > SMTP Settings`, ative o SMTP customizado e use:
+
+- Sender email: um email do dominio verificado, por exemplo `no-reply@seudominio.com`
+- Sender name: `Sebo Virtual`
+- Host: `smtp.resend.com`
+- Port: `465`
+- Username: `resend`
+- Password: a API key criada no Resend
+
+Depois de salvar, faca um cadastro de teste no Sebo Virtual e confira o envio no painel `Logs` do Resend. Se o dominio ainda nao estiver verificado, os emails podem falhar mesmo com a API key correta.
+
 ## Fluxo sugerido para demonstracao
 
 1. Abrir o site em producao.

@@ -235,6 +235,17 @@ O app usa `VITE_AUTH_REDIRECT_ORIGIN=https://sebo-virtual.vercel.app`, entao mes
 
 Se aparecer `Email rate limit exceeded`, significa que o Supabase bloqueou temporariamente novos emails porque o provedor padrao tem limite baixo. Isso e uma protecao contra abuso, nao erro do banco. Em producao, a solucao correta e configurar SMTP proprio em `Authentication > Emails > SMTP Settings` e ajustar `Authentication > Rate Limits`.
 
+Para usar Resend, o responsavel cria uma conta no Resend, verifica um dominio e gera uma API key. No Supabase, em `Authentication > Emails > SMTP Settings`, os campos ficam:
+
+- Host: `smtp.resend.com`
+- Port: `465`
+- Username: `resend`
+- Password: API key do Resend
+- Sender email: email do dominio verificado, por exemplo `no-reply@seudominio.com`
+- Sender name: `Sebo Virtual`
+
+Esse dado nao fica no frontend. Ele e salvo no painel do Supabase para que o proprio Supabase envie os emails de confirmacao e recuperacao de senha.
+
 ## Estrutura do projeto
 
 Arquivos e pastas importantes:
