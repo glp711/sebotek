@@ -6,6 +6,7 @@ MVP do TCC para busca agregada de livros em sebos independentes, usando React, T
 
 - [Guia de uso do Sebo Virtual](docs/guia-de-uso.md)
 - [Guia de estudo para apresentacao](docs/guia-estudo-apresentacao.md)
+- [Reformulacao e verificacao de setembro de 2026](docs/reformulacao-2026-09.md)
 
 ## Funcionalidades atuais
 
@@ -18,6 +19,9 @@ MVP do TCC para busca agregada de livros em sebos independentes, usando React, T
 - Painel administrativo para listar sebos pendentes, aprovar cadastros e voltar sebos para analise.
 - Paginas de retorno do Supabase Auth para confirmacao de email e redefinicao de senha.
 - Widget VLibras do gov.br para apoio de acessibilidade em Libras.
+- Paginas com endereco proprio, navegacao voltar/avancar e busca preservada na URL.
+- Filtros combinados por categoria, estado, sebo e preco; grade/lista e desejos nos livros.
+- Formulario de cadastro com confirmacao e visibilidade de senha; detalhes com controle de foco pelo teclado.
 
 ## Arquitetura
 
@@ -60,5 +64,8 @@ Ela cria uma arquitetura Supabase-native com:
 ```bash
 npm run build
 npm run lint
+npm test
 npx supabase migration list
 ```
+
+Para verificar a interface, use Node 22.18+ (ou Node 24), execute `npx playwright install chromium` e mantenha `npm run dev -- --host 127.0.0.1 --port 5174` aberto. Rode `npm run test:ui` para catalogo, navegacao e mobile; `npm run test:panels` para os fluxos autenticados com respostas simuladas, sem alterar dados reais. `QA_URL` permite selecionar outro servidor. Os screenshots ficam em `sebo-virtual-qa` dentro da pasta temporaria do sistema.

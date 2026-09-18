@@ -19,7 +19,8 @@ const adminStoreColumns = `${publicStoreColumns},owner_id`
 const legacyStoreColumns =
   'id,name,slug,description,address,city,state,zipCode,phone,openingHours,photoUrl,latitude,longitude,approved,ownerId,createdAt,updatedAt'
 
-const publicProfileColumns = 'id,display_name,role,avatar_url,created_at,updated_at'
+const publicProfileColumns =
+  'id,display_name,role,avatar_url,created_at,updated_at'
 
 const normalizeStore = (row: Record<string, unknown>): StoreRecord => ({
   id: String(row.id),
@@ -124,11 +125,15 @@ const getAuthOrigin = () => {
   if (typeof window === 'undefined') return productionOrigin
 
   const currentOrigin = window.location.origin
-  const isLocal = currentOrigin.includes('localhost') || currentOrigin.includes('127.0.0.1')
+  const isLocal =
+    currentOrigin.includes('localhost') || currentOrigin.includes('127.0.0.1')
   return isLocal ? productionOrigin : currentOrigin
 }
 
-const getAuthRedirectUrl = (path: '/auth/confirm' | '/auth/reset-password', intent?: AuthIntent) => {
+const getAuthRedirectUrl = (
+  path: '/auth/confirm' | '/auth/reset-password',
+  intent?: AuthIntent,
+) => {
   const origin = getAuthOrigin()
   const url = new URL(path, origin)
   if (intent) url.searchParams.set('intent', intent)
@@ -168,41 +173,57 @@ export async function loadCatalog(term = ''): Promise<CatalogPayload> {
 
   const { data: booksData, error: booksError } = await supabase
     .from('books')
-    .select(`id,title,author,isbn,category,summary,publisher,published_year,condition,price,quantity,cover_url,store_id,created_at,updated_at,stores(${publicStoreColumns})`)
+    .select(
+      `id,title,author,isbn,category,summary,publisher,published_year,condition,price,quantity,cover_url,store_id,created_at,updated_at,stores!inner(${publicStoreColumns})`,
+    )
     .gt('quantity', 0)
+    .eq('stores.approved', true)
     .order('created_at', { ascending: false })
-    .limit(80)
+    .limit(1000)
+    .abortSignal(AbortSignal.timeout(15000))
 
-  if (!booksError && booksData && booksData.length > 0) {
-    const books = filterCatalog(booksData.map((row) => normalizeBook(row)), term)
+  if (!booksError && booksData) {
+    const books = filterCatalog(
+      booksData.map((row) => normalizeBook(row)),
+      term,
+    )
+    const { data: storesData, error: storesError } = await supabase
+      .from('stores')
+      .select(publicStoreColumns)
+      .eq('approved', true)
+      .order('name')
+      .abortSignal(AbortSignal.timeout(15000))
     return {
       source: 'supabase',
       books,
-      stores: uniqueStoresFromBooks(books),
+      stores: storesError
+        ? uniqueStoresFromBooks(books)
+        : (storesData ?? []).map(normalizeStore),
+      error: storesError
+        ? 'A lista completa de sebos não pôde ser atualizada.'
+        : undefined,
     }
   }
 
   const { data: legacyData, error: legacyError } = await supabase
     .from('Book')
-    .select(`id,title,author,isbn,condition,price,quantity,coverUrl,storeId,createdAt,updatedAt,Store(${legacyStoreColumns})`)
+    .select(
+      `id,title,author,isbn,condition,price,quantity,coverUrl,storeId,createdAt,updatedAt,Store(${legacyStoreColumns})`,
+    )
     .gt('quantity', 0)
     .order('createdAt', { ascending: false })
     .limit(80)
+    .abortSignal(AbortSignal.timeout(10000))
 
   if (!legacyError && legacyData && legacyData.length > 0) {
-    const books = filterCatalog(legacyData.map((row) => normalizeBook(row)), term)
+    const books = filterCatalog(
+      legacyData.map((row) => normalizeBook(row)),
+      term,
+    )
     return {
       source: 'legacy',
       books,
       stores: uniqueStoresFromBooks(books),
-    }
-  }
-
-  if (!booksError && booksData) {
-    return {
-      source: 'supabase',
-      books: [],
-      stores: [],
     }
   }
 
@@ -253,7 +274,10 @@ export async function signUp(
   if (error) throw error
 }
 
-export async function sendPasswordReset(email: string, intent: AuthIntent = 'customer') {
+export async function sendPasswordReset(
+  email: string,
+  intent: AuthIntent = 'customer',
+) {
   if (!supabase) throw new Error('Configure o Supabase no arquivo .env.local.')
   const { error } = await supabase.auth.resetPasswordForEmail(email, {
     redirectTo: getAuthRedirectUrl('/auth/reset-password', intent),
@@ -379,7 +403,8 @@ export async function createStoreRequest(draft: StoreDraft) {
 
 export async function createBook(storeId: string, draft: BookDraft) {
   if (!supabase) throw new Error('Configure o Supabase no arquivo .env.local.')
-  if (!storeId) throw new Error('Cadastre ou carregue seu sebo antes de cadastrar livros.')
+  if (!storeId)
+    throw new Error('Cadastre ou carregue seu sebo antes de cadastrar livros.')
 
   const { data: storeData, error: storeError } = await supabase
     .from('stores')
@@ -389,7 +414,9 @@ export async function createBook(storeId: string, draft: BookDraft) {
 
   if (storeError) throw storeError
   if (!storeData?.approved) {
-    throw new Error('Seu sebo precisa ser aprovado pela administracao antes de cadastrar livros.')
+    throw new Error(
+      'Seu sebo precisa ser aprovado pela administracao antes de cadastrar livros.',
+    )
   }
 
   const { error } = await supabase.from('books').insert({
@@ -419,7 +446,10 @@ export async function updateBook(bookId: string, draft: BookDraft) {
   if (!supabase) throw new Error('Configure o Supabase no arquivo .env.local.')
   if (!bookId) throw new Error('Escolha um livro para editar.')
 
-  const { error } = await supabase.from('books').update(bookDraftToRow(draft)).eq('id', bookId)
+  const { error } = await supabase
+    .from('books')
+    .update(bookDraftToRow(draft))
+    .eq('id', bookId)
   if (error) throw error
 }
 

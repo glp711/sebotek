@@ -13,6 +13,18 @@ O site tambem inclui o widget VLibras do gov.br para apoiar acessibilidade, perm
 
 ## Como usar como leitor
 
+A versao reformulada abre diretamente no catalogo. A busca ignora diferencas de acento e permite combinar palavras do titulo, autor e sebo. A categoria selecionada fica destacada. Alem do estado do livro, e possivel filtrar por sebo e preco maximo, alternar grade/lista e remover filtros individualmente.
+
+No celular, toque em `Filtros` para abrir as opcoes e em `Ver resultados` para recolher. O botao de coracao nos livros salva o titulo nos desejos da conta; se voce ainda nao entrou, o site direciona para `Minha conta`.
+
+As paginas podem ser abertas diretamente e continuam funcionando ao atualizar ou voltar pelo navegador:
+
+- `/catalogo`: livros, busca e filtros.
+- `/sebos`: estabelecimentos aprovados, inclusive os que ainda nao tem livros.
+- `/conta`: login, cadastro, perfil e lista de desejos.
+- `/meu-sebo`: cadastro do estabelecimento, acompanhamento da analise e acervo.
+- `/admin`: revisao de sebos, exclusiva para administradores.
+
 1. Acesse https://sebo-virtual.vercel.app/
 2. Use a busca principal para procurar por titulo, autor, categoria, ISBN ou nome do sebo.
 3. Use os filtros do catalogo:
@@ -25,7 +37,7 @@ O site tambem inclui o widget VLibras do gov.br para apoiar acessibilidade, perm
 
 ## Como ver os sebos parceiros
 
-1. Clique em `Sebos` no menu superior.
+1. Clique em `Sebos parceiros` no menu superior.
 2. Veja a lista de sebos cadastrados.
 3. Cada card mostra:
    - Nome do sebo.
@@ -77,7 +89,7 @@ Livros so podem ser criados depois que o sebo for aprovado. Essa regra aparece n
 ## Como usar o painel administrativo
 
 1. Entre com uma conta que tenha role `ADMIN` na tabela `profiles`.
-2. Apos o login, clique em `Admin` no menu superior.
+2. Apos o login, clique em `Administracao` no menu superior.
 3. Use os filtros `Pendentes`, `Aprovados` e `Todos`.
 4. Clique em `Aprovar` para liberar um sebo verificado.
 5. Clique em `Voltar para analise` se um sebo precisar ser bloqueado novamente.
@@ -88,7 +100,7 @@ Somente contas com role `ADMIN` conseguem acessar a lista administrativa e alter
 
 O Sebo Virtual possui dois fluxos de conta:
 
-- `Cliente`: usado pelo leitor para manter perfil e wishlist.
+- `Minha conta`: usado pelo leitor para manter perfil e wishlist.
 - `Meu sebo`: usado pelo responsavel pelo sebo para cadastrar o estabelecimento e publicar livros.
 
 Ao criar conta, o Supabase envia um email de confirmacao. O link volta para:

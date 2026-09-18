@@ -2,10 +2,10 @@ import {
   useCallback,
   useEffect,
   useMemo,
+  useRef,
   useState,
   type CSSProperties,
   type FormEvent,
-  type ReactNode,
 } from 'react'
 import {
   ArrowLeft,
@@ -16,10 +16,14 @@ import {
   CheckCircle2,
   Edit3,
   Eye,
+  EyeOff,
+  ArrowRight,
+  LogOut,
+  Leaf,
+  ListFilter,
   Heart,
   ImageIcon,
   KeyRound,
-  ListFilter,
   Loader2,
   LogIn,
   MapPin,
@@ -38,6 +42,9 @@ import {
   X,
 } from 'lucide-react'
 import './App.css'
+import { CatalogBrowser } from './components/CatalogBrowser'
+import { BookCover } from './components/BookCover'
+import { normalizeSearch, whatsappUrl } from './lib/catalogFilters'
 import {
   createBook,
   createStoreRequest,
@@ -61,7 +68,6 @@ import {
   updatePassword,
   setStoreApproval,
 } from './lib/catalog'
-import { isSupabaseConfigured } from './lib/supabase'
 import type { AuthSession } from './lib/supabase'
 import type {
   AuthIntent,
@@ -76,7 +82,6 @@ import type {
 } from './types'
 
 const APP_NAME = 'Sebo Virtual'
-const APP_REGION = 'Rio de Janeiro'
 
 const conditionLabel: Record<BookCondition, string> = {
   NEW: 'Novo',
@@ -108,9 +113,10 @@ const formatCurrency = (value: number) =>
 
 const getWhatsappUrl = (book: BookRecord) =>
   book.store?.phone
-    ? `https://wa.me/${book.store.phone}?text=${encodeURIComponent(
-        `Oi! Vi no ${APP_NAME} que voces tem "${book.title}" de ${book.author}. Ainda esta disponivel?`,
-      )}`
+    ? whatsappUrl(
+        book.store.phone,
+        `Oi! Vi no Sebo Virtual o livro "${book.title}" de ${book.author}. Ainda esta disponivel?`,
+      )
     : undefined
 
 const getFriendlyAuthError = (error: unknown) => {
@@ -118,7 +124,7 @@ const getFriendlyAuthError = (error: unknown) => {
 
   const message = error.message.toLowerCase()
   if (message.includes('email rate limit') || message.includes('rate limit')) {
-    return 'O Supabase bloqueou novos emails por limite de envio. Aguarde alguns minutos e tente de novo, ou configure SMTP proprio no Supabase para liberar mais envios.'
+    return 'O envio de emails esta temporariamente indisponivel por excesso de solicitacoes. Aguarde antes de tentar novamente. Se sua conta ja foi confirmada, voce pode entrar normalmente.'
   }
 
   if (message.includes('invalid login credentials')) {
@@ -132,290 +138,488 @@ const getFriendlyAuthError = (error: unknown) => {
   return error.message
 }
 
-type CatalogSortMode = 'recent' | 'price-asc' | 'price-desc' | 'title'
 type AppView = 'catalog' | 'stores' | 'client' | 'owner' | 'admin'
 type AuthRoute = 'confirm' | 'reset-password' | null
 
+const viewPaths: Record<AppView, string> = {
+  catalog: '/catalogo',
+  stores: '/sebos',
+  client: '/conta',
+  owner: '/meu-sebo',
+  admin: '/admin',
+}
+const viewNames: Record<AppView, string> = {
+  catalog: 'Catálogo',
+  stores: 'Sebos parceiros',
+  client: 'Minha conta',
+  owner: 'Meu sebo',
+  admin: 'Administração',
+}
+function currentView(): AppView {
+  return (
+    (Object.entries(viewPaths).find(
+      ([, path]) => path === window.location.pathname,
+    )?.[0] as AppView) ?? 'catalog'
+  )
+}
+
 function App() {
-  const [query, setQuery] = useState('')
+  const [query, setQuery] = useState(
+    () => new URLSearchParams(window.location.search).get('q') ?? '',
+  )
+  const [searchTerm, setSearchTerm] = useState(query)
+  const [storeFilter, setStoreFilter] = useState(
+    () => new URLSearchParams(window.location.search).get('sebo') ?? '',
+  )
   const [books, setBooks] = useState<BookRecord[]>([])
   const [stores, setStores] = useState<StoreRecord[]>([])
   const [source, setSource] = useState<CatalogSource>('demo')
   const [loadError, setLoadError] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
-  const [activeView, setActiveView] = useState<AppView>('catalog')
+  const [activeView, setActiveView] = useState<AppView>(currentView)
+  const [pagePath, setPagePath] = useState(window.location.pathname)
   const [session, setSession] = useState<AuthSession | null>(null)
+  const [identityLoading, setIdentityLoading] = useState(true)
   const [profile, setProfile] = useState<ProfileRecord | null>(null)
   const [selectedBook, setSelectedBook] = useState<BookRecord | null>(null)
-  const authRoute = getAuthRoute()
+  const [savedTitles, setSavedTitles] = useState<string[]>([])
+  const [savingBookId, setSavingBookId] = useState<string | null>(null)
+  const [notice, setNotice] = useState<string | null>(null)
+  const catalogRequest = useRef(0)
+  const identityRequest = useRef(0)
+  const authRoute = getAuthRoute(pagePath)
 
-  const refreshCatalog = useCallback(async (term = query) => {
+  const refreshCatalog = useCallback(async () => {
+    const request = ++catalogRequest.current
     setLoading(true)
-    const payload = await loadCatalog(term)
-    setBooks(payload.books)
-    setStores(payload.stores)
-    setSource(payload.source)
-    setLoadError(payload.error ?? null)
-    setLoading(false)
-  }, [query])
-
-  const showView = useCallback((view: AppView) => {
-    setActiveView(view)
-    window.setTimeout(() => {
-      document.getElementById('workspace')?.scrollIntoView({
-        behavior: 'auto',
-        block: 'start',
-      })
-    }, 80)
-  }, [])
-
-  useEffect(() => {
-    let active = true
-
-    loadCatalog('').then((payload) => {
-      if (!active) return
+    try {
+      const payload = await loadCatalog('')
+      if (request !== catalogRequest.current) return
       setBooks(payload.books)
       setStores(payload.stores)
       setSource(payload.source)
       setLoadError(payload.error ?? null)
-      setLoading(false)
-    })
-
-    async function loadIdentity() {
-      const currentSession = await getCurrentSession()
-      if (!active) return
-
-      setSession(currentSession)
-      setProfile(currentSession ? await loadMyProfile() : null)
+    } catch {
+      if (request === catalogRequest.current)
+        setLoadError('Não foi possível atualizar o acervo. Tente novamente.')
+    } finally {
+      if (request === catalogRequest.current) setLoading(false)
     }
+  }, [])
 
-    loadIdentity()
-    const unsubscribe = subscribeToAuth(async () => {
+  const refreshSession = useCallback(async () => {
+    const request = ++identityRequest.current
+    try {
       const currentSession = await getCurrentSession()
+      const [nextProfile, wishlist] = currentSession
+        ? await Promise.all([loadMyProfile(), loadMyWishlist()])
+        : [null, []]
+      if (request !== identityRequest.current) return
       setSession(currentSession)
-      setProfile(currentSession ? await loadMyProfile() : null)
-    })
-
-    return () => {
-      active = false
-      unsubscribe()
+      setProfile(nextProfile)
+      setSavedTitles(wishlist.map((item) => item.title))
+    } catch {
+      if (request === identityRequest.current)
+        setNotice(
+          'Não foi possível carregar sua conta. Atualize a página para tentar novamente.',
+        )
+    } finally {
+      if (request === identityRequest.current) setIdentityLoading(false)
     }
+  }, [])
+
+  const showView = useCallback((view: AppView, term = '', storeId = '') => {
+    const url = new URL(viewPaths[view], window.location.origin)
+    if (term) url.searchParams.set('q', term)
+    if (storeId) url.searchParams.set('sebo', storeId)
+    if (
+      url.pathname + url.search !==
+      window.location.pathname + window.location.search
+    ) {
+      window.history.pushState({}, '', url.pathname + url.search)
+    }
+    setPagePath(url.pathname)
+    setActiveView(view)
+    setQuery(term)
+    setSearchTerm(term)
+    setStoreFilter(storeId)
+    setSelectedBook(null)
+    window.scrollTo({ top: 0, behavior: 'instant' })
+  }, [])
+
+  const cancelRequests = useCallback(() => {
+    catalogRequest.current++
+    identityRequest.current++
   }, [])
 
   useEffect(() => {
-    if (!selectedBook) return
-
-    const previousOverflow = document.body.style.overflow
-    document.body.style.overflow = 'hidden'
-
-    const closeOnEscape = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') setSelectedBook(null)
+    let active = true
+    queueMicrotask(() => {
+      if (active) {
+        void refreshCatalog()
+        void refreshSession()
+      }
+    })
+    // Schedule outside the auth callback so Supabase can release its session lock.
+    const unsubscribe = subscribeToAuth(() => {
+      window.setTimeout(() => {
+        if (active) void refreshSession()
+      }, 0)
+    })
+    const onPopState = () => {
+      const params = new URLSearchParams(window.location.search)
+      setActiveView(currentView())
+      setPagePath(window.location.pathname)
+      setSearchTerm(params.get('q') ?? '')
+      setQuery(params.get('q') ?? '')
+      setStoreFilter(params.get('sebo') ?? '')
+      setSelectedBook(null)
     }
-
-    window.addEventListener('keydown', closeOnEscape)
-
+    window.addEventListener('popstate', onPopState)
     return () => {
-      document.body.style.overflow = previousOverflow
-      window.removeEventListener('keydown', closeOnEscape)
+      active = false
+      cancelRequests()
+      unsubscribe()
+      window.removeEventListener('popstate', onPopState)
     }
-  }, [selectedBook])
+  }, [refreshCatalog, refreshSession, cancelRequests])
 
-  const featuredBooks = useMemo(() => books.slice(0, 6), [books])
-  const totalInventory = useMemo(
-    () => books.reduce((total, book) => total + book.quantity, 0),
-    [books],
-  )
-  const verifiedStores = useMemo(() => stores.filter((store) => store.approved).length, [stores])
+  useEffect(() => {
+    document.title = `${authRoute ? 'Acesso à conta' : viewNames[activeView]} | Sebo Virtual`
+  }, [activeView, authRoute])
 
-  const handleSearch = (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault()
-    refreshCatalog(query)
-    showView('catalog')
+  const saveBook = async (book: BookRecord) => {
+    if (!session) {
+      setNotice('Entre na sua conta para salvar livros na lista de desejos.')
+      showView('client')
+      return
+    }
+    if (savingBookId || savedTitles.includes(book.title)) return
+    setSavingBookId(book.id)
+    try {
+      await createWishlistItem(book.title, book.author)
+      setSavedTitles((titles) => [...titles, book.title])
+      setNotice(`“${book.title}” foi salvo nos seus desejos.`)
+    } catch {
+      setNotice('Não foi possível salvar o livro. Tente novamente.')
+    } finally {
+      setSavingBookId(null)
+    }
   }
-
-  const openStoreCatalog = (storeName: string) => {
-    setQuery(storeName)
-    refreshCatalog(storeName)
-    showView('catalog')
-  }
-
-  const refreshSession = useCallback(async () => {
-    const currentSession = await getCurrentSession()
-    setSession(currentSession)
-    setProfile(currentSession ? await loadMyProfile() : null)
-  }, [])
 
   if (authRoute) {
     return (
       <AuthRoutePage
         route={authRoute}
         session={session}
+        loading={identityLoading}
         onAuthChange={refreshSession}
-        onBack={() => {
-          const intent = getAuthIntentFromUrl()
-          window.history.replaceState({}, '', '/')
-          showView(intent === 'store' ? 'owner' : 'client')
-        }}
+        onBack={() =>
+          showView(getAuthIntentFromUrl() === 'store' ? 'owner' : 'client')
+        }
       />
     )
   }
 
+  const navItems: { view: AppView; icon: typeof BookOpen }[] = [
+    { view: 'catalog', icon: BookOpen },
+    { view: 'stores', icon: Store },
+    { view: 'client', icon: User },
+    { view: 'owner', icon: Building2 },
+    ...(profile?.role === 'ADMIN'
+      ? [{ view: 'admin' as AppView, icon: ShieldCheck }]
+      : []),
+  ]
   return (
     <div className="app-shell">
-      <header className="topbar">
-        <a className="brand" href="#inicio" aria-label={APP_NAME}>
-          <span className="brand-mark" aria-hidden="true">
-            <BookOpen size={24} strokeWidth={2.4} />
-          </span>
-          <span className="brand-name">
-            Sebo <span>Virtual</span>
-          </span>
-        </a>
-
-        <nav className="nav-actions" aria-label="Navegacao principal">
-          <button
-            className={activeView === 'catalog' ? 'nav-button active' : 'nav-button'}
-            aria-pressed={activeView === 'catalog'}
-            type="button"
-            onClick={() => showView('catalog')}
-          >
-            Catalogo
-          </button>
-          <button
-            className={activeView === 'stores' ? 'nav-button active' : 'nav-button'}
-            aria-pressed={activeView === 'stores'}
-            type="button"
-            onClick={() => showView('stores')}
-          >
-            Sebos
-          </button>
-          <button
-            className={activeView === 'client' ? 'nav-button active' : 'nav-button'}
-            aria-pressed={activeView === 'client'}
-            type="button"
-            onClick={() => showView('client')}
-          >
-            Cliente
-          </button>
-          <button
-            className={activeView === 'owner' ? 'nav-button active' : 'nav-button'}
-            aria-pressed={activeView === 'owner'}
-            type="button"
-            onClick={() => showView('owner')}
-          >
-            Meu sebo
-          </button>
-          {profile?.role === 'ADMIN' && (
-            <button
-              className={activeView === 'admin' ? 'nav-button active' : 'nav-button'}
-              aria-pressed={activeView === 'admin'}
-              type="button"
-              onClick={() => showView('admin')}
-            >
-              Admin
-            </button>
-          )}
-        </nav>
-      </header>
-
-      <main>
-        <section className="hero-panel" id="inicio">
-          <div className="hero-copy">
-            <div className="eyebrow">
-              <MapPin size={15} />
-              {APP_REGION}
-            </div>
-            <h1>{APP_NAME} conecta leitores a sebos independentes.</h1>
-            <p>
-              Encontre livros usados por titulo, autor, categoria ou ISBN e fale direto
-              com o sebo que tem o exemplar disponivel.
-            </p>
-            <form className="search-box" onSubmit={handleSearch}>
-              <Search aria-hidden="true" size={22} />
-              <input
-                aria-label="Buscar livro, autor ou ISBN"
-                placeholder="Ex: Marina, romance historico, 978..."
-                value={query}
-                onChange={(event) => setQuery(event.target.value)}
-              />
-              <button type="submit">
-                {loading ? <Loader2 className="spin" size={18} /> : <Search size={18} />}
-                Buscar
-              </button>
-            </form>
-            <StatusStrip source={source} loadError={loadError} />
-          </div>
-
-          <div className="hero-visual" aria-label="Resumo do acervo">
-            <div className="stacked-books" aria-hidden="true">
-              {featuredBooks.slice(0, 4).map((book, index) => (
-                <BookSpine book={book} key={book.id} index={index} />
-              ))}
-            </div>
-            <div className="hero-stats">
-              <MetricCard icon={<BookOpen size={18} />} label="Livros" value={books.length} />
-              <MetricCard icon={<Store size={18} />} label="Sebos verificados" value={verifiedStores || stores.length} />
-              <MetricCard icon={<Heart size={18} />} label="Exemplares" value={totalInventory} />
-            </div>
-          </div>
-        </section>
-
-        <section className="workspace" id="workspace">
-          {activeView === 'catalog' && (
-            <CatalogView
-              books={books}
-              loading={loading}
-              onSelectBook={setSelectedBook}
-              onRefresh={() => refreshCatalog(query)}
-            />
-          )}
-
-          {activeView === 'stores' && (
-            <StoresView books={books} stores={stores} onOpenStoreCatalog={openStoreCatalog} />
-          )}
-
-          {activeView === 'client' && (
-            <ClientPanel
-              session={session}
-              onAuthChange={refreshSession}
-              onCatalogSearch={(term) => {
-                setQuery(term)
-                refreshCatalog(term)
+      <a className="skip-link" href="#workspace">
+        Pular para o conteúdo
+      </a>
+      <div className="announcement">
+        <span>
+          <Leaf size={14} /> Livros circulam. Histórias continuam.
+        </span>
+        <span>Sebos independentes, perto de você.</span>
+      </div>
+      <header className="site-header">
+        <div className="topbar">
+          <a
+            className="brand"
+            href="/catalogo"
+            onClick={(event) => {
+              if (!event.ctrlKey && !event.metaKey) {
+                event.preventDefault()
                 showView('catalog')
-              }}
+              }
+            }}
+            aria-label="Sebo Virtual, catálogo"
+          >
+            <span className="brand-mark">
+              <BookOpen size={26} strokeWidth={1.8} />
+            </span>
+            <span className="brand-name">
+              sebo<span>virtual</span>
+              <small>ENCONTRE. LEIA. RECOMECE.</small>
+            </span>
+          </a>
+          <form
+            className="search-box"
+            role="search"
+            onSubmit={(event) => {
+              event.preventDefault()
+              showView('catalog', query.trim())
+            }}
+          >
+            <Search size={19} aria-hidden="true" />
+            <input
+              aria-label="Buscar livros"
+              placeholder="Qual livro você está procurando?"
+              value={query}
+              onChange={(event) => setQuery(event.target.value)}
+            />
+            {query && (
+              <button
+                className="search-clear"
+                type="button"
+                aria-label="Limpar busca"
+                title="Limpar busca"
+                onClick={() => {
+                  setQuery('')
+                  showView('catalog')
+                }}
+              >
+                <X size={16} />
+              </button>
+            )}
+            <button type="submit" aria-label="Buscar">
+              <ArrowRight size={20} />
+            </button>
+          </form>
+          <a
+            className="account-link"
+            href="/conta"
+            onClick={(event) => {
+              if (!event.ctrlKey && !event.metaKey) {
+                event.preventDefault()
+                showView('client')
+              }
+            }}
+          >
+            <User size={21} />
+            <span>
+              <small>
+                {session ? 'Bem-vindo de volta' : 'Seu cantinho de leitura'}
+              </small>
+              <strong>{profile?.displayName ?? 'Entrar / Cadastrar'}</strong>
+            </span>
+          </a>
+        </div>
+        <div className="navigation-bar">
+          <nav className="nav-actions" aria-label="Navegação principal">
+            {navItems.map(({ view, icon: Icon }) => (
+              <a
+                key={view}
+                href={viewPaths[view]}
+                className={
+                  activeView === view ? 'nav-button active' : 'nav-button'
+                }
+                aria-current={activeView === view ? 'page' : undefined}
+                onClick={(event) => {
+                  if (!event.ctrlKey && !event.metaKey) {
+                    event.preventDefault()
+                    showView(view)
+                  }
+                }}
+              >
+                <Icon size={17} />
+                {viewNames[view]}
+              </a>
+            ))}
+          </nav>
+          <span className="nav-location">
+            <MapPin size={14} /> Rio de Janeiro
+          </span>
+        </div>
+      </header>
+      <main>
+        {activeView === 'catalog' ? (
+          <section className="catalog-intro">
+            <div>
+              <p className="section-kicker">
+                Livros de segunda mão. Descobertas de primeira.
+              </p>
+              <h1>
+                Sebo Virtual<span>Um novo capítulo começa aqui.</span>
+              </h1>
+              <p>
+                Encontre seu próximo livro e converse direto com quem cuida
+                dele.
+              </p>
+            </div>
+            <div className="intro-index">
+              <span>
+                <strong>{loading ? '—' : books.length}</strong> títulos no
+                acervo
+              </span>
+              <span>
+                <strong>
+                  {loading
+                    ? '—'
+                    : stores.filter((store) => store.approved).length}
+                </strong>{' '}
+                sebos verificados
+              </span>
+            </div>
+          </section>
+        ) : (
+          <section className="page-heading">
+            <p className="section-kicker">
+              Sebo Virtual / {viewNames[activeView]}
+            </p>
+            <h1>{viewNames[activeView]}</h1>
+            <p>
+              {activeView === 'stores'
+                ? 'Conheça os sebos e descubra o que cada acervo guarda.'
+                : activeView === 'owner'
+                  ? 'Seu espaço para cuidar do sebo e dos seus livros.'
+                  : activeView === 'admin'
+                    ? 'Acompanhe os cadastros e revise os sebos da comunidade.'
+                    : 'Suas leituras, seus desejos e sua próxima descoberta.'}
+            </p>
+          </section>
+        )}
+        <section className="workspace" id="workspace" tabIndex={-1}>
+          {notice && (
+            <div className="notice-banner" role="status">
+              <CheckCircle2 size={18} />
+              <p>{notice}</p>
+              <button
+                className="icon-button"
+                type="button"
+                aria-label="Fechar aviso"
+                onClick={() => setNotice(null)}
+              >
+                <X size={16} />
+              </button>
+            </div>
+          )}
+          {(activeView === 'catalog' || activeView === 'stores') &&
+            (loadError || source === 'demo') &&
+            !loading && (
+              <div className="status-strip warning" role="status">
+                <AlertTriangle size={17} />
+                <span>
+                  {source === 'demo'
+                    ? 'Acervo de demonstração. Os livros e sebos abaixo são exemplos; o acervo online não está disponível agora.'
+                    : 'Não foi possível atualizar todos os dados. Tente novamente.'}
+                </span>
+                <button
+                  className="text-button"
+                  type="button"
+                  onClick={() => void refreshCatalog()}
+                >
+                  Tentar novamente
+                </button>
+              </div>
+            )}
+          {activeView === 'catalog' && (
+            <CatalogBrowser
+              key={storeFilter}
+              books={books}
+              stores={stores}
+              loading={loading}
+              query={searchTerm}
+              storeId={storeFilter}
+              onClearSearch={() => showView('catalog')}
+              onSelectBook={setSelectedBook}
+              onRefresh={() => void refreshCatalog()}
+              onSaveBook={(book) => void saveBook(book)}
+              savedTitles={savedTitles}
+              savingBookId={savingBookId}
             />
           )}
-
-          {activeView === 'owner' && (
-            <OwnerPanel
-              session={session}
-              onAuthChange={refreshSession}
-              onCatalogChange={() => refreshCatalog(query)}
-            />
-          )}
-
-          {activeView === 'admin' && (
-            <AdminPanel
-              session={session}
-              profile={profile}
-              onAuthChange={refreshSession}
-              onCatalogChange={() => refreshCatalog(query)}
-            />
+          {activeView === 'stores' &&
+            (loading ? (
+              <div className="empty-state">
+                <Loader2 size={24} className="spin" />
+                Carregando sebos...
+              </div>
+            ) : (
+              <StoresView
+                books={books}
+                stores={stores}
+                onOpenStoreCatalog={(storeId) =>
+                  showView('catalog', '', storeId)
+                }
+              />
+            ))}
+          {['client', 'owner', 'admin'].includes(activeView) &&
+          identityLoading ? (
+            <div className="empty-state" role="status">
+              <Loader2 size={24} className="spin" />
+              Carregando sua conta...
+            </div>
+          ) : (
+            <>
+              {activeView === 'client' && (
+                <ClientPanel
+                  session={session}
+                  onAuthChange={refreshSession}
+                  onCatalogSearch={(term) => showView('catalog', term)}
+                />
+              )}
+              {activeView === 'owner' && (
+                <OwnerPanel
+                  session={session}
+                  onAuthChange={refreshSession}
+                  onCatalogChange={() => void refreshCatalog()}
+                />
+              )}
+              {activeView === 'admin' && (
+                <AdminPanel
+                  session={session}
+                  profile={profile}
+                  onAuthChange={refreshSession}
+                  onCatalogChange={() => void refreshCatalog()}
+                />
+              )}
+            </>
           )}
         </section>
       </main>
-
+      <footer className="site-footer">
+        <div>
+          <BookOpen size={21} />
+          <strong>Sebo Virtual</strong>
+          <span>Novas histórias para livros que continuam.</span>
+        </div>
+        <a
+          href="https://www.gov.br/governodigital/pt-br/acessibilidade-e-usuario/vlibras"
+          target="_blank"
+          rel="noreferrer"
+        >
+          Acessibilidade com VLibras <ArrowRight size={14} />
+        </a>
+        <small>Projeto acadêmico · Rio de Janeiro</small>
+      </footer>
       {selectedBook && (
-        <BookDetailDialog book={selectedBook} onClose={() => setSelectedBook(null)} />
+        <BookDetailDialog
+          book={selectedBook}
+          onClose={() => setSelectedBook(null)}
+          onSave={() => void saveBook(selectedBook)}
+          saved={savedTitles.includes(selectedBook.title)}
+          saving={savingBookId !== null}
+          allowContact={source !== 'demo'}
+        />
       )}
     </div>
   )
 }
 
-function getAuthRoute(): AuthRoute {
+function getAuthRoute(path = window.location.pathname): AuthRoute {
   if (typeof window === 'undefined') return null
-  if (window.location.pathname === '/auth/confirm') return 'confirm'
-  if (window.location.pathname === '/auth/reset-password') return 'reset-password'
+  if (path === '/auth/confirm') return 'confirm'
+  if (path === '/auth/reset-password') return 'reset-password'
   return null
 }
 
@@ -428,11 +632,13 @@ function getAuthIntentFromUrl(): AuthIntent {
 function AuthRoutePage({
   route,
   session,
+  loading,
   onAuthChange,
   onBack,
 }: {
   route: Exclude<AuthRoute, null>
   session: AuthSession | null
+  loading: boolean
   onAuthChange: () => Promise<void>
   onBack: () => void
 }) {
@@ -444,8 +650,10 @@ function AuthRoutePage({
   const errorMessage =
     typeof window === 'undefined'
       ? null
-      : new URLSearchParams(window.location.search).get('error_description') ??
-        new URLSearchParams(window.location.hash.replace(/^#/, '')).get('error_description')
+      : (new URLSearchParams(window.location.search).get('error_description') ??
+        new URLSearchParams(window.location.hash.replace(/^#/, '')).get(
+          'error_description',
+        ))
 
   useEffect(() => {
     onAuthChange()
@@ -465,7 +673,11 @@ function AuthRoutePage({
       await onAuthChange()
       setMessage('Senha atualizada. Voce ja pode continuar usando sua conta.')
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : 'Nao foi possivel atualizar a senha.')
+      setMessage(
+        error instanceof Error
+          ? error.message
+          : 'Nao foi possivel atualizar a senha.',
+      )
     } finally {
       setSaving(false)
     }
@@ -481,17 +693,27 @@ function AuthRoutePage({
         {route === 'confirm' ? (
           <>
             <p className="section-kicker">Confirmacao de email</p>
-            <h1>Email confirmado</h1>
+            <h1>
+              {errorMessage
+                ? 'Não foi possível confirmar'
+                : loading
+                  ? 'Verificando seu acesso'
+                  : session
+                    ? 'Email confirmado'
+                    : 'Confirmação de email'}
+            </h1>
             <p>
               {errorMessage
-                ? `O link retornou uma mensagem do Supabase: ${errorMessage}`
+                ? 'Este link não pôde ser validado. Ele pode ter expirado ou já ter sido utilizado. Entre na sua conta ou solicite um novo link.'
                 : session
-                  ? 'Sua sessao foi reconhecida. Agora voce pode acessar o painel certo para sua conta.'
-                  : 'Se o email foi confirmado, entre com seu email e senha para continuar.'}
+                  ? 'Seu acesso está pronto. Continue para sua conta.'
+                  : 'Se você já confirmou seu email, entre com email e senha para continuar.'}
             </p>
             <div className="dialog-actions">
               <button className="primary-action" type="button" onClick={onBack}>
-                {intent === 'store' ? 'Ir para aba Meu sebo' : 'Ir para aba Cliente'}
+                {intent === 'store'
+                  ? 'Ir para Meu sebo'
+                  : 'Ir para Minha conta'}
               </button>
               <a className="secondary-action" href="/">
                 Voltar ao catalogo
@@ -502,7 +724,13 @@ function AuthRoutePage({
           <>
             <p className="section-kicker">Redefinir senha</p>
             <h1>Crie uma nova senha</h1>
-            <p>Digite uma senha nova para concluir o retorno pelo email do Supabase.</p>
+            <p>
+              {loading
+                ? 'Verificando seu link...'
+                : !session || errorMessage
+                  ? 'Abra o link de recuperação enviado ao seu email. Se ele expirou, solicite outro em Minha conta > Recuperar senha.'
+                  : 'Escolha uma nova senha para proteger sua conta.'}
+            </p>
             <form className="stack-form" onSubmit={handlePasswordUpdate}>
               <label>
                 Nova senha
@@ -526,15 +754,25 @@ function AuthRoutePage({
                   placeholder="repita a senha"
                 />
               </label>
-              <button className="primary-action" disabled={saving} type="submit">
-                {saving ? <Loader2 className="spin" size={18} /> : <KeyRound size={18} />}
+              <button
+                className="primary-action"
+                disabled={
+                  saving || loading || !session || Boolean(errorMessage)
+                }
+                type="submit"
+              >
+                {saving ? (
+                  <Loader2 className="spin" size={18} />
+                ) : (
+                  <KeyRound size={18} />
+                )}
                 Atualizar senha
               </button>
             </form>
             {message && <p className="form-message">{message}</p>}
             <button className="secondary-action" type="button" onClick={onBack}>
               <ArrowLeft size={18} />
-              {intent === 'store' ? 'Ir para aba Meu sebo' : 'Ir para aba Cliente'}
+              {intent === 'store' ? 'Ir para Meu sebo' : 'Ir para Minha conta'}
             </button>
           </>
         )}
@@ -543,275 +781,78 @@ function AuthRoutePage({
   )
 }
 
-function StatusStrip({
-  source,
-  loadError,
+function BookDetailDialog({
+  book,
+  onClose,
+  onSave,
+  saved,
+  saving,
+  allowContact,
 }: {
-  source: CatalogSource
-  loadError: string | null
+  book: BookRecord
+  onClose: () => void
+  onSave: () => void
+  saved: boolean
+  saving: boolean
+  allowContact: boolean
 }) {
-  if (!isSupabaseConfigured) {
-    return (
-      <div className="status-strip warning">
-        <AlertTriangle size={16} />
-        Modo demonstracao: adicione `.env.local` para conectar no Supabase.
-      </div>
-    )
-  }
-
-  if (loadError) {
-    return (
-      <div className="status-strip warning">
-        <AlertTriangle size={16} />
-        Supabase conectado, mas usando dados demo: {loadError}
-      </div>
-    )
-  }
-
-  return (
-    <div className="status-strip success">
-      <CheckCircle2 size={16} />
-      {source === 'legacy'
-        ? 'Conectado nas tabelas antigas do Supabase.'
-        : 'Conectado na arquitetura Supabase-native.'}
-    </div>
-  )
-}
-
-function CatalogView({
-  books,
-  loading,
-  onSelectBook,
-  onRefresh,
-}: {
-  books: BookRecord[]
-  loading: boolean
-  onSelectBook: (book: BookRecord) => void
-  onRefresh: () => void
-}) {
-  const [categoryFilter, setCategoryFilter] = useState('all')
-  const [conditionFilter, setConditionFilter] = useState<BookCondition | 'all'>('all')
-  const [sortMode, setSortMode] = useState<CatalogSortMode>('recent')
-
-  const categories = useMemo(
-    () =>
-      Array.from(new Set(books.map((book) => book.category).filter(Boolean) as string[])).sort(
-        (a, b) => a.localeCompare(b, 'pt-BR'),
-      ),
-    [books],
-  )
-
-  const visibleBooks = useMemo(() => {
-    const nextBooks = books
-      .filter((book) => categoryFilter === 'all' || book.category === categoryFilter)
-      .filter((book) => conditionFilter === 'all' || book.condition === conditionFilter)
-
-    if (sortMode === 'price-asc') {
-      return [...nextBooks].sort((a, b) => a.price - b.price)
+  const whatsapp = allowContact ? getWhatsappUrl(book) : undefined
+  const dialogRef = useRef<HTMLElement>(null)
+  useEffect(() => {
+    const previousFocus = document.activeElement as HTMLElement | null
+    const previousOverflow = document.body.style.overflow
+    document.body.style.overflow = 'hidden'
+    dialogRef.current?.querySelector<HTMLButtonElement>('button')?.focus()
+    const handleKey = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        event.preventDefault()
+        onClose()
+      }
+      if (event.key !== 'Tab') return
+      const focusable = dialogRef.current?.querySelectorAll<HTMLElement>(
+        'button:not(:disabled), a[href], input, select, textarea',
+      )
+      if (!focusable?.length) return
+      const first = focusable[0],
+        last = focusable[focusable.length - 1]
+      if (event.shiftKey && document.activeElement === first) {
+        event.preventDefault()
+        last.focus()
+      }
+      if (!event.shiftKey && document.activeElement === last) {
+        event.preventDefault()
+        first.focus()
+      }
     }
-
-    if (sortMode === 'price-desc') {
-      return [...nextBooks].sort((a, b) => b.price - a.price)
+    document.addEventListener('keydown', handleKey)
+    return () => {
+      document.body.style.overflow = previousOverflow
+      document.removeEventListener('keydown', handleKey)
+      if (previousFocus?.isConnected) previousFocus.focus()
     }
-
-    if (sortMode === 'title') {
-      return [...nextBooks].sort((a, b) => a.title.localeCompare(b.title, 'pt-BR'))
-    }
-
-    return nextBooks
-  }, [books, categoryFilter, conditionFilter, sortMode])
-
-  const storeCount = useMemo(
-    () => new Set(visibleBooks.map((book) => book.store?.id ?? book.storeId)).size,
-    [visibleBooks],
-  )
-  const lowestPrice = useMemo(
-    () =>
-      visibleBooks.length > 0
-        ? Math.min(...visibleBooks.map((book) => book.price))
-        : 0,
-    [visibleBooks],
-  )
-
-  const clearFilters = () => {
-    setCategoryFilter('all')
-    setConditionFilter('all')
-    setSortMode('recent')
-  }
-
-  return (
-    <div className="view-grid">
-      <div className="section-heading">
-        <div>
-          <p className="section-kicker">Catalogo</p>
-          <h2>Livros disponiveis</h2>
-        </div>
-        <div className="section-actions">
-          <button
-            className="secondary-action compact-action"
-            type="button"
-            onClick={clearFilters}
-          >
-            Limpar filtros
-          </button>
-          <button className="icon-button" type="button" onClick={onRefresh} title="Atualizar catalogo">
-            {loading ? <Loader2 className="spin" size={18} /> : <RefreshCw size={18} />}
-          </button>
-        </div>
-      </div>
-
-      <div className="catalog-controls" aria-label="Filtros do catalogo">
-        <label>
-          <ListFilter size={16} />
-          Categoria
-          <select
-            value={categoryFilter}
-            onChange={(event) => setCategoryFilter(event.target.value)}
-          >
-            <option value="all">Todas</option>
-            {categories.map((category) => (
-              <option key={category} value={category}>
-                {category}
-              </option>
-            ))}
-          </select>
-        </label>
-        <label>
-          <CheckCircle2 size={16} />
-          Estado
-          <select
-            value={conditionFilter}
-            onChange={(event) => setConditionFilter(event.target.value as BookCondition | 'all')}
-          >
-            <option value="all">Todos</option>
-            {Object.entries(conditionLabel).map(([value, label]) => (
-              <option key={value} value={value}>
-                {label}
-              </option>
-            ))}
-          </select>
-        </label>
-        <label>
-          <RefreshCw size={16} />
-          Ordenar
-          <select
-            value={sortMode}
-            onChange={(event) => setSortMode(event.target.value as CatalogSortMode)}
-          >
-            <option value="recent">Recentes</option>
-            <option value="price-asc">Menor preco</option>
-            <option value="price-desc">Maior preco</option>
-            <option value="title">Titulo A-Z</option>
-          </select>
-        </label>
-      </div>
-
-      <div className="catalog-summary" aria-label="Resumo dos resultados">
-        <span>{visibleBooks.length} livros</span>
-        <span>{storeCount} sebos</span>
-        <span>A partir de {formatCurrency(lowestPrice)}</span>
-      </div>
-
-      <div className="book-grid">
-        {visibleBooks.map((book) => (
-          <BookCard book={book} key={book.id} onSelect={onSelectBook} />
-        ))}
-      </div>
-
-      {!loading && visibleBooks.length === 0 && (
-        <div className="empty-state">
-          <Search size={24} />
-          Nenhum livro encontrado para essa busca.
-        </div>
-      )}
-    </div>
-  )
-}
-
-function BookCard({ book, onSelect }: { book: BookRecord; onSelect: (book: BookRecord) => void }) {
-  return (
-    <article className="book-card">
-      <button
-        className="book-card-main"
-        type="button"
-        onClick={() => onSelect(book)}
-        aria-label={`Ver detalhes de ${book.title}`}
-      >
-        <div
-          className={book.coverUrl ? 'book-cover has-image' : 'book-cover'}
-          style={{ '--cover-hue': hueFromString(book.title) } as CSSProperties}
-        >
-          {book.coverUrl ? (
-            <img src={book.coverUrl} alt={`Capa do livro ${book.title}`} loading="lazy" />
-          ) : (
-            <>
-              <span>{book.title}</span>
-              <small>{book.author}</small>
-            </>
-          )}
-        </div>
-        <div className="book-body">
-          <div className="book-meta">
-            <span>{book.category ?? conditionLabel[book.condition] ?? book.condition}</span>
-            <span>{book.quantity} un.</span>
-          </div>
-          <h3>{book.title}</h3>
-          <p>{book.author}</p>
-          <p className="book-summary">{book.summary ?? 'Exemplar disponivel para consulta no sebo parceiro.'}</p>
-          <div className="price-row">
-            <strong>{formatCurrency(book.price)}</strong>
-            {book.isbn && <span>ISBN {book.isbn}</span>}
-          </div>
-          <div className="store-row">
-            <Store size={16} />
-            <span>{book.store?.name ?? 'Sebo nao informado'}</span>
-          </div>
-          {book.store && (
-            <div className="store-row muted">
-              <MapPin size={16} />
-              <span>
-                {book.store.city}, {book.store.state}
-              </span>
-            </div>
-          )}
-          <span className="book-cta">
-            <Eye size={17} />
-            Detalhes
-          </span>
-        </div>
-      </button>
-    </article>
-  )
-}
-
-function BookDetailDialog({ book, onClose }: { book: BookRecord; onClose: () => void }) {
-  const whatsapp = getWhatsappUrl(book)
+  }, [onClose])
 
   return (
     <div className="book-dialog-backdrop" role="presentation" onClick={onClose}>
       <section
+        ref={dialogRef}
         className="book-dialog"
         role="dialog"
         aria-modal="true"
         aria-labelledby="book-dialog-title"
         onClick={(event) => event.stopPropagation()}
       >
-        <button className="dialog-close" type="button" onClick={onClose} aria-label="Fechar">
+        <button
+          className="dialog-close"
+          type="button"
+          onClick={onClose}
+          aria-label="Fechar"
+        >
           <X size={20} />
         </button>
 
-        <div
-          className={book.coverUrl ? 'dialog-cover has-image' : 'dialog-cover'}
-          style={{ '--cover-hue': hueFromString(book.title) } as CSSProperties}
-        >
-          {book.coverUrl ? (
-            <img src={book.coverUrl} alt={`Capa do livro ${book.title}`} />
-          ) : (
-            <>
-              <span>{book.title}</span>
-              <small>{book.author}</small>
-            </>
-          )}
+        <div className="dialog-cover">
+          <BookCover book={book} />
         </div>
 
         <div className="dialog-content">
@@ -822,7 +863,8 @@ function BookDetailDialog({ book, onClose }: { book: BookRecord; onClose: () => 
           <h2 id="book-dialog-title">{book.title}</h2>
           <p className="dialog-author">{book.author}</p>
           <p className="dialog-summary">
-            {book.summary ?? 'Exemplar disponivel no acervo de um sebo parceiro.'}
+            {book.summary ??
+              'Exemplar disponivel no acervo de um sebo parceiro.'}
           </p>
 
           <div className="dialog-facts">
@@ -831,7 +873,9 @@ function BookDetailDialog({ book, onClose }: { book: BookRecord; onClose: () => 
               <span>Preco</span>
             </div>
             <div>
-              <strong>{conditionLabel[book.condition] ?? book.condition}</strong>
+              <strong>
+                {conditionLabel[book.condition] ?? book.condition}
+              </strong>
               <span>Estado</span>
             </div>
             <div>
@@ -877,13 +921,28 @@ function BookDetailDialog({ book, onClose }: { book: BookRecord; onClose: () => 
 
           <div className="dialog-actions">
             {whatsapp && (
-              <a className="primary-action" href={whatsapp} target="_blank" rel="noreferrer">
+              <a
+                className="primary-action"
+                href={whatsapp}
+                target="_blank"
+                rel="noreferrer"
+              >
                 <MessageCircle size={18} />
                 Chamar no WhatsApp
               </a>
             )}
-            <button className="secondary-action" type="button" onClick={onClose}>
-              Continuar olhando
+            <button
+              className="secondary-action"
+              type="button"
+              onClick={onSave}
+              disabled={saved || saving}
+            >
+              {saved ? <CheckCircle2 size={17} /> : <Heart size={17} />}
+              {saved
+                ? 'Salvo nos desejos'
+                : saving
+                  ? 'Salvando...'
+                  : 'Salvar nos desejos'}
             </button>
           </div>
         </div>
@@ -902,7 +961,10 @@ function StoresView({
   onOpenStoreCatalog: (storeName: string) => void
 }) {
   const storeStats = useMemo(() => {
-    const stats = new Map<string, { books: number; units: number; lowestPrice: number | null }>()
+    const stats = new Map<
+      string,
+      { books: number; units: number; lowestPrice: number | null }
+    >()
 
     for (const book of books) {
       if (!book.store?.id) continue
@@ -915,7 +977,9 @@ function StoresView({
       current.books += 1
       current.units += book.quantity
       current.lowestPrice =
-        current.lowestPrice === null ? book.price : Math.min(current.lowestPrice, book.price)
+        current.lowestPrice === null
+          ? book.price
+          : Math.min(current.lowestPrice, book.price)
       stats.set(book.store.id, current)
     }
 
@@ -941,7 +1005,9 @@ function StoresView({
                 <span className="store-avatar">
                   <Store size={24} />
                 </span>
-                <span className={store.approved ? 'approval approved' : 'approval'}>
+                <span
+                  className={store.approved ? 'approval approved' : 'approval'}
+                >
                   {store.approved ? 'Verificado' : 'Em analise'}
                 </span>
               </div>
@@ -959,7 +1025,9 @@ function StoresView({
                 </span>
                 <span>
                   <strong>
-                    {stats?.lowestPrice ? formatCurrency(stats.lowestPrice) : '-'}
+                    {stats?.lowestPrice
+                      ? formatCurrency(stats.lowestPrice)
+                      : '-'}
                   </strong>
                   menor preco
                 </span>
@@ -979,7 +1047,7 @@ function StoresView({
               <button
                 className="secondary-action store-action"
                 type="button"
-                onClick={() => onOpenStoreCatalog(store.name)}
+                onClick={() => onOpenStoreCatalog(store.id)}
               >
                 Ver acervo
               </button>
@@ -1002,15 +1070,24 @@ function AuthBox({
   description: string
   onAuthChange: () => Promise<void>
 }) {
-  const [authMode, setAuthMode] = useState<'signin' | 'signup' | 'reset'>('signin')
+  const [authMode, setAuthMode] = useState<'signin' | 'signup' | 'reset'>(
+    'signin',
+  )
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [displayName, setDisplayName] = useState('')
+  const [confirmPassword, setConfirmPassword] = useState('')
+  const [showPassword, setShowPassword] = useState(false)
   const [message, setMessage] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
 
   const handleAuth = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
+    if (saving) return
+    if (authMode === 'signup' && password !== confirmPassword) {
+      setMessage('As senhas não conferem. Confira os dois campos.')
+      return
+    }
     setSaving(true)
     setMessage(null)
     try {
@@ -1024,7 +1101,9 @@ function AuthBox({
         await onAuthChange()
       } else {
         await sendPasswordReset(email, intent)
-        setMessage('Enviamos um link para redefinir sua senha. Verifique seu email.')
+        setMessage(
+          'Enviamos um link para redefinir sua senha. Verifique seu email.',
+        )
       }
     } catch (error) {
       setMessage(getFriendlyAuthError(error))
@@ -1037,7 +1116,9 @@ function AuthBox({
     <section className="owner-card auth-card">
       <div className="section-heading compact">
         <div>
-          <p className="section-kicker">{intent === 'store' ? 'Meu sebo' : 'Conta do cliente'}</p>
+          <p className="section-kicker">
+            {intent === 'store' ? 'Meu sebo' : 'Conta do cliente'}
+          </p>
           <h2>{title}</h2>
         </div>
         <LogIn size={22} />
@@ -1046,24 +1127,39 @@ function AuthBox({
       <div className="segmented auth-segmented">
         <button
           className={authMode === 'signin' ? 'active' : ''}
+          aria-pressed={authMode === 'signin'}
+          disabled={saving}
           type="button"
-          onClick={() => setAuthMode('signin')}
+          onClick={() => {
+            setAuthMode('signin')
+            setMessage(null)
+          }}
         >
           Entrar
         </button>
         <button
           className={authMode === 'signup' ? 'active' : ''}
+          aria-pressed={authMode === 'signup'}
+          disabled={saving}
           type="button"
-          onClick={() => setAuthMode('signup')}
+          onClick={() => {
+            setAuthMode('signup')
+            setMessage(null)
+          }}
         >
           Cadastrar
         </button>
         <button
           className={authMode === 'reset' ? 'active' : ''}
+          aria-pressed={authMode === 'reset'}
+          disabled={saving}
           type="button"
-          onClick={() => setAuthMode('reset')}
+          onClick={() => {
+            setAuthMode('reset')
+            setMessage(null)
+          }}
         >
-          Senha
+          Recuperar senha
         </button>
       </div>
       <form className="stack-form" onSubmit={handleAuth}>
@@ -1073,8 +1169,11 @@ function AuthBox({
             <input
               required
               value={displayName}
+              autoComplete="name"
               onChange={(event) => setDisplayName(event.target.value)}
-              placeholder={intent === 'store' ? 'Responsavel pelo sebo' : 'Seu nome'}
+              placeholder={
+                intent === 'store' ? 'Responsavel pelo sebo' : 'Seu nome'
+              }
             />
           </label>
         )}
@@ -1083,21 +1182,52 @@ function AuthBox({
           <input
             required
             type="email"
+            autoComplete="email"
             value={email}
             onChange={(event) => setEmail(event.target.value)}
-            placeholder={intent === 'store' ? 'sebo@email.com' : 'cliente@email.com'}
+            placeholder={
+              intent === 'store' ? 'sebo@email.com' : 'cliente@email.com'
+            }
           />
         </label>
         {authMode !== 'reset' && (
           <label>
             Senha
+            <span className="password-field">
+              <input
+                required
+                minLength={6}
+                autoComplete={
+                  authMode === 'signin' ? 'current-password' : 'new-password'
+                }
+                type={showPassword ? 'text' : 'password'}
+                value={password}
+                onChange={(event) => setPassword(event.target.value)}
+                placeholder="minimo 6 caracteres"
+              />
+              <button
+                className="icon-button"
+                type="button"
+                aria-label={showPassword ? 'Ocultar senha' : 'Mostrar senha'}
+                title={showPassword ? 'Ocultar senha' : 'Mostrar senha'}
+                onClick={() => setShowPassword(!showPassword)}
+              >
+                {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
+              </button>
+            </span>
+          </label>
+        )}
+        {authMode === 'signup' && (
+          <label>
+            Confirmar senha
             <input
               required
               minLength={6}
-              type="password"
-              value={password}
-              onChange={(event) => setPassword(event.target.value)}
-              placeholder="minimo 6 caracteres"
+              type={showPassword ? 'text' : 'password'}
+              autoComplete="new-password"
+              value={confirmPassword}
+              onChange={(event) => setConfirmPassword(event.target.value)}
+              placeholder="Digite a senha novamente"
             />
           </label>
         )}
@@ -1116,7 +1246,11 @@ function AuthBox({
               : 'Enviar email'}
         </button>
       </form>
-      {message && <p className="form-message">{message}</p>}
+      {message && (
+        <p className="form-message" role="status">
+          {message}
+        </p>
+      )}
     </section>
   )
 }
@@ -1155,7 +1289,13 @@ function ClientPanel({
   }, [session])
 
   useEffect(() => {
-    void Promise.resolve().then(refreshClientData)
+    void Promise.resolve()
+      .then(refreshClientData)
+      .catch(() =>
+        setMessage(
+          'Não foi possível carregar seus dados. Atualize a página para tentar novamente.',
+        ),
+      )
   }, [refreshClientData])
 
   const handleProfile = async (event: FormEvent<HTMLFormElement>) => {
@@ -1165,9 +1305,14 @@ function ClientPanel({
     try {
       await updateMyProfile(displayName)
       await refreshClientData()
+      await onAuthChange()
       setMessage('Perfil atualizado.')
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : 'Nao foi possivel atualizar o perfil.')
+      setMessage(
+        error instanceof Error
+          ? error.message
+          : 'Nao foi possivel atualizar o perfil.',
+      )
     } finally {
       setSaving(false)
     }
@@ -1183,8 +1328,13 @@ function ClientPanel({
       setWishlistAuthor('')
       await refreshClientData()
       setMessage('Livro salvo na sua wishlist.')
+      await onAuthChange()
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : 'Nao foi possivel salvar a wishlist.')
+      setMessage(
+        error instanceof Error
+          ? error.message
+          : 'Nao foi possivel salvar a wishlist.',
+      )
     } finally {
       setSaving(false)
     }
@@ -1197,8 +1347,13 @@ function ClientPanel({
       await deleteWishlistItem(id)
       await refreshClientData()
       setMessage('Item removido da wishlist.')
+      await onAuthChange()
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : 'Nao foi possivel remover o item.')
+      setMessage(
+        error instanceof Error
+          ? error.message
+          : 'Nao foi possivel remover o item.',
+      )
     } finally {
       setSaving(false)
     }
@@ -1210,20 +1365,20 @@ function ClientPanel({
         <AuthBox
           intent="customer"
           title="Entrar como cliente"
-          description="Crie sua conta para salvar livros desejados e acompanhar futuras notificacoes de acervo."
+          description="Entre ou crie sua conta para guardar os livros que deseja encontrar."
           onAuthChange={onAuthChange}
         />
         <aside className="owner-note">
           <Heart size={24} />
           <h3>Wishlist do leitor</h3>
           <p>
-            O cliente pode salvar livros que ainda nao encontrou e voltar ao catalogo
-            quando quiser pesquisar por eles.
+            O cliente pode salvar livros que ainda nao encontrou e voltar ao
+            catalogo quando quiser pesquisar por eles.
           </p>
           <div className="owner-checklist" aria-label="Recursos do cliente">
             <span>Busca salva</span>
             <span>Perfil</span>
-            <span>Futuro alerta</span>
+            <span>Lista de desejos</span>
           </div>
         </aside>
       </div>
@@ -1247,7 +1402,7 @@ function ClientPanel({
               await onAuthChange()
             }}
           >
-            <User size={18} />
+            <LogOut size={18} />
           </button>
         </div>
 
@@ -1261,7 +1416,11 @@ function ClientPanel({
             />
           </label>
           <button className="primary-action" disabled={saving} type="submit">
-            {saving ? <Loader2 className="spin" size={18} /> : <CheckCircle2 size={18} />}
+            {saving ? (
+              <Loader2 className="spin" size={18} />
+            ) : (
+              <CheckCircle2 size={18} />
+            )}
             Salvar perfil
           </button>
         </form>
@@ -1293,7 +1452,11 @@ function ClientPanel({
             />
           </label>
           <button className="primary-action" disabled={saving} type="submit">
-            {saving ? <Loader2 className="spin" size={18} /> : <Heart size={18} />}
+            {saving ? (
+              <Loader2 className="spin" size={18} />
+            ) : (
+              <Heart size={18} />
+            )}
             Salvar na wishlist
           </button>
         </form>
@@ -1304,7 +1467,9 @@ function ClientPanel({
         <Heart size={24} />
         <h3>Livros desejados</h3>
         {wishlist.length === 0 ? (
-          <p>Nenhum livro salvo ainda. Adicione um titulo para acompanhar depois.</p>
+          <p>
+            Nenhum livro salvo ainda. Adicione um titulo para acompanhar depois.
+          </p>
         ) : (
           <div className="wishlist-list">
             {wishlist.map((item) => (
@@ -1318,7 +1483,11 @@ function ClientPanel({
                     className="icon-button"
                     type="button"
                     title="Buscar no catalogo"
-                    onClick={() => onCatalogSearch([item.title, item.author].filter(Boolean).join(' '))}
+                    onClick={() =>
+                      onCatalogSearch(
+                        [item.title, item.author].filter(Boolean).join(' '),
+                      )
+                    }
                   >
                     <Search size={16} />
                   </button>
@@ -1355,6 +1524,7 @@ function OwnerPanel({
   const [inventoryQuery, setInventoryQuery] = useState('')
   const [message, setMessage] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
+  const [loadingOwner, setLoadingOwner] = useState(Boolean(session))
   const [storeDraft, setStoreDraft] = useState<StoreDraft>({
     name: '',
     description: '',
@@ -1402,11 +1572,23 @@ function OwnerPanel({
       }
     }
 
-    loadOwnerArea().catch((error) => {
-      if (active) {
-        setMessage(error instanceof Error ? error.message : 'Nao foi possivel carregar o painel.')
-      }
-    })
+    Promise.resolve()
+      .then(() => {
+        if (active) setLoadingOwner(true)
+        return loadOwnerArea()
+      })
+      .catch((error) => {
+        if (active) {
+          setMessage(
+            error instanceof Error
+              ? error.message
+              : 'Nao foi possivel carregar o painel.',
+          )
+        }
+      })
+      .finally(() => {
+        if (active) setLoadingOwner(false)
+      })
 
     return () => {
       active = false
@@ -1427,15 +1609,15 @@ function OwnerPanel({
   }, [myBooks])
 
   const visibleOwnerBooks = useMemo(() => {
-    const search = inventoryQuery.trim().toLowerCase()
+    const search = normalizeSearch(inventoryQuery)
     if (!search) return myBooks
 
     return myBooks.filter((book) =>
-      [book.title, book.author, book.isbn, book.category, book.publisher]
-        .filter(Boolean)
-        .join(' ')
-        .toLowerCase()
-        .includes(search),
+      normalizeSearch(
+        [book.title, book.author, book.isbn, book.category, book.publisher]
+          .filter(Boolean)
+          .join(' '),
+      ).includes(search),
     )
   }, [inventoryQuery, myBooks])
 
@@ -1460,6 +1642,9 @@ function OwnerPanel({
       quantity: String(book.quantity),
     })
     setMessage(`Editando "${book.title}".`)
+    document
+      .getElementById('book-editor')
+      ?.scrollIntoView({ behavior: 'smooth', block: 'start' })
   }
 
   const handleStore = async (event: FormEvent<HTMLFormElement>) => {
@@ -1474,7 +1659,11 @@ function OwnerPanel({
       if (loadedStore) await refreshOwnerBooks(loadedStore.id)
       onCatalogChange()
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : 'Nao foi possivel cadastrar o sebo.')
+      setMessage(
+        error instanceof Error
+          ? error.message
+          : 'Nao foi possivel cadastrar o sebo.',
+      )
     } finally {
       setSaving(false)
     }
@@ -1496,7 +1685,11 @@ function OwnerPanel({
       if (store) await refreshOwnerBooks(store.id)
       onCatalogChange()
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : 'Nao foi possivel cadastrar o livro.')
+      setMessage(
+        error instanceof Error
+          ? error.message
+          : 'Nao foi possivel cadastrar o livro.',
+      )
     } finally {
       setSaving(false)
     }
@@ -1515,7 +1708,11 @@ function OwnerPanel({
       setMessage('Livro removido do acervo.')
       onCatalogChange()
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : 'Nao foi possivel remover o livro.')
+      setMessage(
+        error instanceof Error
+          ? error.message
+          : 'Nao foi possivel remover o livro.',
+      )
     } finally {
       setSaving(false)
     }
@@ -1535,8 +1732,9 @@ function OwnerPanel({
           <ShieldCheck size={24} />
           <h3>Cadastro com aprovacao</h3>
           <p>
-            O responsavel cria conta, envia o cadastro do sebo para aprovacao e depois
-            gerencia os livros. A aprovacao evita golpes e sustenta o selo de verificado.
+            O responsavel cria conta, envia o cadastro do sebo para aprovacao e
+            depois gerencia os livros. A equipe revisa os dados do
+            estabelecimento antes de liberar o acervo.
           </p>
           <div className="owner-checklist" aria-label="Etapas do sebo">
             <span>Conta</span>
@@ -1547,6 +1745,14 @@ function OwnerPanel({
       </div>
     )
   }
+
+  if (loadingOwner)
+    return (
+      <div className="empty-state" role="status">
+        <Loader2 className="spin" size={24} />
+        Carregando seu sebo...
+      </div>
+    )
 
   return (
     <div className="owner-layout">
@@ -1565,9 +1771,37 @@ function OwnerPanel({
               await onAuthChange()
             }}
           >
-            <User size={18} />
+            <LogOut size={18} />
           </button>
         </div>
+
+        <ol className="verification-steps" aria-label="Etapas do cadastro">
+          <li className="complete">
+            <CheckCircle2 size={18} />
+            <span>1. Sua conta</span>
+          </li>
+          <li
+            className={store ? 'complete' : 'current'}
+            aria-current={!store ? 'step' : undefined}
+          >
+            <Store size={18} />
+            <span>2. Cadastro do sebo</span>
+          </li>
+          <li
+            className={store?.approved ? 'complete' : store ? 'current' : ''}
+            aria-current={store && !store.approved ? 'step' : undefined}
+          >
+            <ShieldCheck size={18} />
+            <span>3. Análise</span>
+          </li>
+          <li
+            className={store?.approved ? 'current' : ''}
+            aria-current={store?.approved ? 'step' : undefined}
+          >
+            <BookOpen size={18} />
+            <span>4. Seu acervo</span>
+          </li>
+        </ol>
 
         {!store && (
           <form className="stack-form" onSubmit={handleStore}>
@@ -1576,7 +1810,9 @@ function OwnerPanel({
               <input
                 required
                 value={storeDraft.name}
-                onChange={(event) => setStoreDraft({ ...storeDraft, name: event.target.value })}
+                onChange={(event) =>
+                  setStoreDraft({ ...storeDraft, name: event.target.value })
+                }
               />
             </label>
             <label>
@@ -1584,7 +1820,10 @@ function OwnerPanel({
               <textarea
                 value={storeDraft.description}
                 onChange={(event) =>
-                  setStoreDraft({ ...storeDraft, description: event.target.value })
+                  setStoreDraft({
+                    ...storeDraft,
+                    description: event.target.value,
+                  })
                 }
               />
             </label>
@@ -1594,7 +1833,9 @@ function OwnerPanel({
                 <input
                   required
                   value={storeDraft.city}
-                  onChange={(event) => setStoreDraft({ ...storeDraft, city: event.target.value })}
+                  onChange={(event) =>
+                    setStoreDraft({ ...storeDraft, city: event.target.value })
+                  }
                 />
               </label>
               <label>
@@ -1603,7 +1844,9 @@ function OwnerPanel({
                   required
                   maxLength={2}
                   value={storeDraft.state}
-                  onChange={(event) => setStoreDraft({ ...storeDraft, state: event.target.value })}
+                  onChange={(event) =>
+                    setStoreDraft({ ...storeDraft, state: event.target.value })
+                  }
                 />
               </label>
             </div>
@@ -1612,7 +1855,9 @@ function OwnerPanel({
               <input
                 required
                 value={storeDraft.address}
-                onChange={(event) => setStoreDraft({ ...storeDraft, address: event.target.value })}
+                onChange={(event) =>
+                  setStoreDraft({ ...storeDraft, address: event.target.value })
+                }
               />
             </label>
             <div className="form-row">
@@ -1621,7 +1866,10 @@ function OwnerPanel({
                 <input
                   value={storeDraft.zipCode}
                   onChange={(event) =>
-                    setStoreDraft({ ...storeDraft, zipCode: event.target.value })
+                    setStoreDraft({
+                      ...storeDraft,
+                      zipCode: event.target.value,
+                    })
                   }
                 />
               </label>
@@ -1630,7 +1878,9 @@ function OwnerPanel({
                 <input
                   required
                   value={storeDraft.phone}
-                  onChange={(event) => setStoreDraft({ ...storeDraft, phone: event.target.value })}
+                  onChange={(event) =>
+                    setStoreDraft({ ...storeDraft, phone: event.target.value })
+                  }
                 />
               </label>
             </div>
@@ -1639,12 +1889,19 @@ function OwnerPanel({
               <input
                 value={storeDraft.openingHours}
                 onChange={(event) =>
-                  setStoreDraft({ ...storeDraft, openingHours: event.target.value })
+                  setStoreDraft({
+                    ...storeDraft,
+                    openingHours: event.target.value,
+                  })
                 }
               />
             </label>
             <button className="primary-action" disabled={saving} type="submit">
-              {saving ? <Loader2 className="spin" size={18} /> : <ShieldCheck size={18} />}
+              {saving ? (
+                <Loader2 className="spin" size={18} />
+              ) : (
+                <ShieldCheck size={18} />
+              )}
               Enviar para aprovacao
             </button>
           </form>
@@ -1657,8 +1914,9 @@ function OwnerPanel({
               <p className="section-kicker">Analise obrigatoria</p>
               <h3>Sebo aguardando aprovacao</h3>
               <p>
-                A administracao precisa verificar o cadastro antes da publicacao de livros.
-                Enquanto isso, revise endereco, telefone e horario para evitar reprova.
+                A administracao precisa verificar o cadastro antes da publicacao
+                de livros. Você receberá acesso ao formulário de livros após a
+                aprovação. Atualize a página para consultar o status.
               </p>
             </div>
             <div className="owner-checklist" aria-label="Fluxo de verificacao">
@@ -1670,7 +1928,7 @@ function OwnerPanel({
         )}
 
         {store && store.approved && (
-          <form className="stack-form" onSubmit={handleBook}>
+          <form id="book-editor" className="stack-form" onSubmit={handleBook}>
             <div className="store-status-strip" aria-label="Resumo do sebo">
               <span className={store.approved ? 'approved' : ''}>
                 {store.approved ? 'Aprovado' : 'Aguardando aprovacao'}
@@ -1683,8 +1941,14 @@ function OwnerPanel({
 
             <div className="section-heading mini">
               <div>
-                <p className="section-kicker">{editingBookId ? 'Editar livro' : 'Novo livro'}</p>
-                <h3>{editingBookId ? 'Atualizar dados do acervo' : 'Cadastrar no acervo'}</h3>
+                <p className="section-kicker">
+                  {editingBookId ? 'Editar livro' : 'Novo livro'}
+                </p>
+                <h3>
+                  {editingBookId
+                    ? 'Atualizar dados do acervo'
+                    : 'Cadastrar no acervo'}
+                </h3>
               </div>
               {editingBookId && (
                 <button
@@ -1704,7 +1968,9 @@ function OwnerPanel({
                 <input
                   required
                   value={bookDraft.title}
-                  onChange={(event) => setBookDraft({ ...bookDraft, title: event.target.value })}
+                  onChange={(event) =>
+                    setBookDraft({ ...bookDraft, title: event.target.value })
+                  }
                 />
               </label>
               <label>
@@ -1712,7 +1978,9 @@ function OwnerPanel({
                 <input
                   required
                   value={bookDraft.author}
-                  onChange={(event) => setBookDraft({ ...bookDraft, author: event.target.value })}
+                  onChange={(event) =>
+                    setBookDraft({ ...bookDraft, author: event.target.value })
+                  }
                 />
               </label>
             </div>
@@ -1721,18 +1989,39 @@ function OwnerPanel({
                 ISBN
                 <input
                   value={bookDraft.isbn}
-                  onChange={(event) => setBookDraft({ ...bookDraft, isbn: event.target.value })}
+                  onChange={(event) =>
+                    setBookDraft({ ...bookDraft, isbn: event.target.value })
+                  }
                 />
               </label>
               <label>
                 Categoria
                 <input
                   placeholder="Romance, Historia, Fantasia..."
+                  list="book-categories"
                   value={bookDraft.category}
                   onChange={(event) =>
                     setBookDraft({ ...bookDraft, category: event.target.value })
                   }
                 />
+                <datalist id="book-categories">
+                  {[
+                    'Romance',
+                    'Romance histórico',
+                    'Literatura brasileira',
+                    'Fantasia',
+                    'Ficção científica',
+                    'Mistério',
+                    'Infantil',
+                    'Poesia',
+                    'História',
+                    'Biografia',
+                    'Didáticos',
+                    'Tecnologia',
+                  ].map((category) => (
+                    <option key={category} value={category} />
+                  ))}
+                </datalist>
               </label>
             </div>
             <div className="form-row">
@@ -1741,7 +2030,10 @@ function OwnerPanel({
                 <input
                   value={bookDraft.publisher}
                   onChange={(event) =>
-                    setBookDraft({ ...bookDraft, publisher: event.target.value })
+                    setBookDraft({
+                      ...bookDraft,
+                      publisher: event.target.value,
+                    })
                   }
                 />
               </label>
@@ -1753,7 +2045,10 @@ function OwnerPanel({
                   max="2100"
                   value={bookDraft.publishedYear}
                   onChange={(event) =>
-                    setBookDraft({ ...bookDraft, publishedYear: event.target.value })
+                    setBookDraft({
+                      ...bookDraft,
+                      publishedYear: event.target.value,
+                    })
                   }
                 />
               </label>
@@ -1764,7 +2059,9 @@ function OwnerPanel({
                 type="url"
                 placeholder="https://..."
                 value={bookDraft.coverUrl}
-                onChange={(event) => setBookDraft({ ...bookDraft, coverUrl: event.target.value })}
+                onChange={(event) =>
+                  setBookDraft({ ...bookDraft, coverUrl: event.target.value })
+                }
               />
             </label>
             <label>
@@ -1772,7 +2069,9 @@ function OwnerPanel({
               <textarea
                 placeholder="Edicao, estado real do exemplar, marcas de uso, sinopse curta..."
                 value={bookDraft.summary}
-                onChange={(event) => setBookDraft({ ...bookDraft, summary: event.target.value })}
+                onChange={(event) =>
+                  setBookDraft({ ...bookDraft, summary: event.target.value })
+                }
               />
             </label>
             <div className="form-row three">
@@ -1802,7 +2101,9 @@ function OwnerPanel({
                   min="0"
                   step="0.01"
                   value={bookDraft.price}
-                  onChange={(event) => setBookDraft({ ...bookDraft, price: event.target.value })}
+                  onChange={(event) =>
+                    setBookDraft({ ...bookDraft, price: event.target.value })
+                  }
                 />
               </label>
               <label>
@@ -1819,7 +2120,11 @@ function OwnerPanel({
               </label>
             </div>
             <div className="form-actions">
-              <button className="primary-action" disabled={saving} type="submit">
+              <button
+                className="primary-action"
+                disabled={saving}
+                type="submit"
+              >
                 {saving ? (
                   <Loader2 className="spin" size={18} />
                 ) : editingBookId ? (
@@ -1830,7 +2135,11 @@ function OwnerPanel({
                 {editingBookId ? 'Salvar alteracoes' : 'Cadastrar livro'}
               </button>
               {editingBookId && (
-                <button className="secondary-action" type="button" onClick={resetBookForm}>
+                <button
+                  className="secondary-action"
+                  type="button"
+                  onClick={resetBookForm}
+                >
                   <RefreshCw size={18} />
                   Cancelar edicao
                 </button>
@@ -1856,7 +2165,10 @@ function OwnerPanel({
 
         {store ? (
           <>
-            <div className="inventory-stats" aria-label="Estatisticas do acervo">
+            <div
+              className="inventory-stats"
+              aria-label="Estatisticas do acervo"
+            >
               <span>
                 <BookOpen size={16} />
                 <strong>{inventoryStats.totalTitles}</strong>
@@ -1902,16 +2214,25 @@ function OwnerPanel({
                 {visibleOwnerBooks.map((book) => (
                   <article
                     className={
-                      editingBookId === book.id ? 'inventory-item editing' : 'inventory-item'
+                      editingBookId === book.id
+                        ? 'inventory-item editing'
+                        : 'inventory-item'
                     }
                     key={book.id}
                   >
                     <div
                       className="inventory-cover"
-                      style={{ '--cover-hue': hueFromString(book.title) } as CSSProperties}
+                      style={
+                        {
+                          '--cover-hue': hueFromString(book.title),
+                        } as CSSProperties
+                      }
                     >
                       {book.coverUrl ? (
-                        <img src={book.coverUrl} alt={`Capa de ${book.title}`} />
+                        <img
+                          src={book.coverUrl}
+                          alt={`Capa de ${book.title}`}
+                        />
                       ) : (
                         <span>{book.title.slice(0, 2).toUpperCase()}</span>
                       )}
@@ -1951,8 +2272,8 @@ function OwnerPanel({
         ) : (
           <>
             <p>
-              Depois de enviar o cadastro do sebo, esta area mostra livros cadastrados,
-              estoque, capas e atalhos de edicao.
+              Depois de enviar o cadastro do sebo, esta area mostra livros
+              cadastrados, estoque, capas e atalhos de edicao.
             </p>
             <div className="owner-checklist" aria-label="Funcoes do acervo">
               <span>Criar livros</span>
@@ -1978,7 +2299,9 @@ function AdminPanel({
   onCatalogChange: () => void
 }) {
   const [reviewStores, setReviewStores] = useState<StoreRecord[]>([])
-  const [statusFilter, setStatusFilter] = useState<'pending' | 'approved' | 'all'>('pending')
+  const [statusFilter, setStatusFilter] = useState<
+    'pending' | 'approved' | 'all'
+  >('pending')
   const [message, setMessage] = useState<string | null>(null)
   const [loadingReview, setLoadingReview] = useState(false)
   const [savingStoreId, setSavingStoreId] = useState<string | null>(null)
@@ -1989,7 +2312,11 @@ function AdminPanel({
     try {
       setReviewStores(await loadAdminStores())
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : 'Nao foi possivel carregar os sebos.')
+      setMessage(
+        error instanceof Error
+          ? error.message
+          : 'Nao foi possivel carregar os sebos.',
+      )
     } finally {
       setLoadingReview(false)
     }
@@ -2015,8 +2342,10 @@ function AdminPanel({
   }, [reviewStores])
 
   const visibleReviewStores = useMemo(() => {
-    if (statusFilter === 'pending') return reviewStores.filter((store) => !store.approved)
-    if (statusFilter === 'approved') return reviewStores.filter((store) => store.approved)
+    if (statusFilter === 'pending')
+      return reviewStores.filter((store) => !store.approved)
+    if (statusFilter === 'approved')
+      return reviewStores.filter((store) => store.approved)
     return reviewStores
   }, [reviewStores, statusFilter])
 
@@ -2027,9 +2356,17 @@ function AdminPanel({
       await setStoreApproval(store.id, approved)
       await refreshReviewStores()
       onCatalogChange()
-      setMessage(approved ? 'Sebo aprovado e liberado para cadastrar livros.' : 'Sebo voltou para analise.')
+      setMessage(
+        approved
+          ? 'Sebo aprovado e liberado para cadastrar livros.'
+          : 'Sebo voltou para analise.',
+      )
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : 'Nao foi possivel atualizar o sebo.')
+      setMessage(
+        error instanceof Error
+          ? error.message
+          : 'Nao foi possivel atualizar o sebo.',
+      )
     } finally {
       setSavingStoreId(null)
     }
@@ -2049,8 +2386,8 @@ function AdminPanel({
           <ShieldCheck size={24} />
           <h3>Fluxo de verificacao</h3>
           <p>
-            O sebo envia cadastro, a administracao confere os dados e so depois libera
-            a criacao de livros no catalogo.
+            O sebo envia cadastro, a administracao confere os dados e so depois
+            libera a criacao de livros no catalogo.
           </p>
           <div className="owner-checklist" aria-label="Etapas da analise">
             <span>Pendente</span>
@@ -2065,8 +2402,15 @@ function AdminPanel({
   if (!profile) {
     return (
       <div className="empty-state">
-        <Loader2 className="spin" size={22} />
-        Carregando permissao...
+        <AlertTriangle size={22} />
+        Não foi possível verificar sua permissão.
+        <button
+          className="secondary-action"
+          type="button"
+          onClick={() => void onAuthChange()}
+        >
+          Tentar novamente
+        </button>
       </div>
     )
   }
@@ -2089,12 +2433,12 @@ function AdminPanel({
                 await onAuthChange()
               }}
             >
-              <User size={18} />
+              <LogOut size={18} />
             </button>
           </div>
           <p className="auth-copy">
-            Sua conta esta autenticada, mas nao possui a permissao `ADMIN`. Apenas
-            administradores podem aprovar sebos.
+            Sua conta não tem acesso a esta área. Apenas administradores podem
+            aprovar sebos.
           </p>
         </section>
 
@@ -2102,8 +2446,8 @@ function AdminPanel({
           <AlertTriangle size={24} />
           <h3>Permissao necessaria</h3>
           <p>
-            Para liberar este painel, atualize o perfil da conta no Supabase para role
-            `ADMIN`.
+            A revisão de sebos está disponível apenas para a equipe responsável
+            pelo site.
           </p>
         </aside>
       </div>
@@ -2119,8 +2463,16 @@ function AdminPanel({
             <h2>Analise de sebos</h2>
           </div>
           <div className="section-actions">
-            <button className="secondary-action compact-action" type="button" onClick={refreshReviewStores}>
-              {loadingReview ? <Loader2 className="spin" size={16} /> : <RefreshCw size={16} />}
+            <button
+              className="secondary-action compact-action"
+              type="button"
+              onClick={refreshReviewStores}
+            >
+              {loadingReview ? (
+                <Loader2 className="spin" size={16} />
+              ) : (
+                <RefreshCw size={16} />
+              )}
               Atualizar
             </button>
             <button
@@ -2132,7 +2484,7 @@ function AdminPanel({
                 await onAuthChange()
               }}
             >
-              <User size={18} />
+              <LogOut size={18} />
             </button>
           </div>
         </div>
@@ -2193,7 +2545,11 @@ function AdminPanel({
                     <span className={store.approved ? 'approved' : ''}>
                       {store.approved ? 'Aprovado' : 'Pendente'}
                     </span>
-                    <span>{new Date(store.createdAt ?? '').toLocaleDateString('pt-BR')}</span>
+                    <span>
+                      {new Date(store.createdAt ?? '').toLocaleDateString(
+                        'pt-BR',
+                      )}
+                    </span>
                   </div>
                   <h3>{store.name}</h3>
                   {store.description && <p>{store.description}</p>}
@@ -2255,44 +2611,17 @@ function AdminPanel({
 
       <aside className="owner-note admin-note">
         <ShieldCheck size={24} />
-        <h3>Regra do fluxo</h3>
+        <h3>Antes de aprovar</h3>
         <p>
-          O cadastro do sebo nasce pendente. O lojista so ve o formulario de livros
-          depois da aprovacao, e o banco tambem bloqueia criacao de livros antes disso.
+          Confira nome, endereço e contato antes de aprovar um sebo. Ao retornar
+          um sebo para análise, a publicação de novos livros fica bloqueada.
         </p>
         <div className="owner-checklist" aria-label="Protecoes do fluxo">
-          <span>RLS</span>
-          <span>ADMIN</span>
+          <span>Endereço</span>
+          <span>Contato</span>
           <span>Aprovacao</span>
         </div>
       </aside>
-    </div>
-  )
-}
-
-function MetricCard({
-  icon,
-  label,
-  value,
-}: {
-  icon: ReactNode
-  label: string
-  value: number | string
-}) {
-  return (
-    <div className="metric-card">
-      {icon}
-      <span>{label}</span>
-      <strong>{value}</strong>
-    </div>
-  )
-}
-
-function BookSpine({ book, index }: { book: BookRecord; index: number }) {
-  return (
-    <div className={`book-spine spine-${index + 1}`}>
-      <span>{book.title}</span>
-      <small>{book.author}</small>
     </div>
   )
 }

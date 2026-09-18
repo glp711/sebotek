@@ -4,6 +4,8 @@ Este documento foi feito para o grupo estudar o projeto e se preparar para pergu
 
 ## Resumo rapido
 
+Atualizacao de setembro de 2026: a interface foi reformulada com catalogo direto, paginas com URL propria, filtros combinados, lista de desejos nos livros e etapas visiveis para verificacao do sebo. Consulte [o registro da reformulacao e dos testes](reformulacao-2026-09.md) para estudar as mudancas e os limites da verificacao.
+
 O Sebo Virtual e um sistema web para reunir catalogos de sebos independentes em um so lugar. O leitor pesquisa livros usados, ve detalhes do exemplar e fala com o sebo pelo WhatsApp. O responsavel pelo sebo consegue criar conta, cadastrar o estabelecimento e gerenciar os livros do acervo.
 
 O projeto e um MVP de TCC. MVP significa Minimum Viable Product, ou seja, uma primeira versao funcional com as principais partes do sistema.
