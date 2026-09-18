@@ -95,11 +95,42 @@ try {
     await page.getByLabel('Senha', { exact: true }).getAttribute('type'),
     'text',
   )
+  await page.route('**/auth/v1/signup**', async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({
+        user: {
+          id: '11111111-1111-4111-8111-111111111111',
+          email: 'interface@example.invalid',
+          identities: [],
+          user_metadata: {},
+        },
+        session: null,
+      }),
+    })
+  })
+  await page.getByLabel('Confirmar senha', { exact: true }).fill('abcdef')
+  await page.getByRole('button', { name: 'Criar conta', exact: true }).click()
+  await page
+    .getByRole('heading', { name: 'Digite o código recebido' })
+    .waitFor()
+  const confirmCodeButton = page.getByRole('button', {
+    name: 'Confirmar código',
+  })
+  assert.ok(await confirmCodeButton.isDisabled())
+  await page.getByLabel('Código de confirmação').fill('123456')
+  assert.equal(await confirmCodeButton.isEnabled(), true)
+  await page.screenshot({
+    path: path.join(output, 'confirmation-code.png'),
+    fullPage: true,
+  })
+  await page.getByRole('button', { name: 'Corrigir email' }).click()
   await page.screenshot({
     path: path.join(output, 'account.png'),
     fullPage: true,
   })
-  console.log('Account validation passed')
+  console.log('Account validation and confirmation code passed')
   await page
     .getByRole('navigation')
     .getByRole('link', { name: 'Meu sebo' })
@@ -206,6 +237,7 @@ try {
           'filters',
           'grid/list',
           'account validation',
+          'email confirmation code',
           'Google OAuth entry and callback',
           'routes and back',
           'store catalog',

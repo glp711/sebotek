@@ -967,6 +967,67 @@ select,
   flex: 1;
   background: #dce4d8;
 }
+.confirmation-panel {
+  display: grid;
+  gap: 20px;
+  padding: 24px;
+  border: 1px solid #d7e1d4;
+  border-radius: 8px;
+  background: #f8faf7;
+}
+.confirmation-heading {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+.confirmation-heading h3 {
+  margin-top: 3px;
+  font-size: 20px;
+}
+.confirmation-icon {
+  width: 42px;
+  height: 42px;
+  display: grid;
+  place-items: center;
+  flex: 0 0 auto;
+  border: 1px solid #b9cbb7;
+  border-radius: 50%;
+  color: #245c3e;
+  background: #fff;
+}
+.confirmation-panel > p {
+  color: #566554;
+  font-size: 14px;
+  line-height: 1.65;
+  overflow-wrap: anywhere;
+}
+.confirmation-code {
+  text-align: center;
+  font-size: 24px;
+  font-weight: 700;
+  letter-spacing: 0;
+  font-variant-numeric: tabular-nums;
+}
+.confirmation-panel small {
+  color: #667464;
+  line-height: 1.5;
+}
+.confirmation-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  flex-wrap: wrap;
+}
+.text-action {
+  padding: 8px 0;
+  border: 0;
+  background: transparent;
+  color: #245c3e;
+  font-weight: 650;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
 .password-field {
   display: flex;
   align-items: center;
@@ -1637,6 +1698,15 @@ select,
   }
 }
 @media (max-width: 600px) {
+  .confirmation-actions {
+    align-items: stretch;
+    flex-direction: column;
+  }
+  .confirmation-actions .secondary-action,
+  .confirmation-actions .text-action {
+    width: 100%;
+    justify-content: center;
+  }
   .topbar,
   .navigation-bar,
   main {

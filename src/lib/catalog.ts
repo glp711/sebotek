@@ -297,6 +297,31 @@ export async function signUp(
   if (error) throw error
 }
 
+export async function verifySignupCode(email: string, token: string) {
+  if (!supabase) throw new Error('Configure o Supabase no arquivo .env.local.')
+  const { error } = await supabase.auth.verifyOtp({
+    email: email.trim(),
+    token: token.trim(),
+    type: 'email',
+  })
+  if (error) throw error
+}
+
+export async function resendSignupCode(
+  email: string,
+  intent: AuthIntent = 'customer',
+) {
+  if (!supabase) throw new Error('Configure o Supabase no arquivo .env.local.')
+  const { error } = await supabase.auth.resend({
+    type: 'signup',
+    email: email.trim(),
+    options: {
+      emailRedirectTo: getAuthRedirectUrl('/auth/confirm', intent),
+    },
+  })
+  if (error) throw error
+}
+
 export async function sendPasswordReset(
   email: string,
   intent: AuthIntent = 'customer',

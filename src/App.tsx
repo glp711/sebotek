@@ -59,6 +59,7 @@ import {
   loadMyProfile,
   loadMyWishlist,
   oauthIntentStorageKey,
+  resendSignupCode,
   sendPasswordReset,
   signIn,
   signInWithGoogle,
@@ -68,6 +69,7 @@ import {
   updateMyProfile,
   updateBook,
   updatePassword,
+  verifySignupCode,
   setStoreApproval,
 } from './lib/catalog'
 import type { AuthSession } from './lib/supabase'
@@ -135,6 +137,14 @@ const getFriendlyAuthError = (error: unknown) => {
 
   if (message.includes('email not confirmed')) {
     return 'Confirme seu email antes de entrar.'
+  }
+
+  if (message.includes('token has expired') || message.includes('otp_expired')) {
+    return 'O código expirou. Solicite um novo código e tente novamente.'
+  }
+
+  if (message.includes('invalid token') || message.includes('token is invalid')) {
+    return 'Código inválido. Confira os seis números recebidos por email.'
   }
 
   if (
@@ -1132,6 +1142,8 @@ function AuthBox({
   const [showPassword, setShowPassword] = useState(false)
   const [message, setMessage] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
+  const [confirmationEmail, setConfirmationEmail] = useState('')
+  const [confirmationCode, setConfirmationCode] = useState('')
 
   const handleAuth = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
@@ -1149,7 +1161,9 @@ function AuthBox({
         await onAuthChange()
       } else if (authMode === 'signup') {
         await signUp(email, password, displayName, intent)
-        setMessage('Conta criada. Confira seu email para confirmar o acesso.')
+        setConfirmationEmail(email.trim())
+        setConfirmationCode('')
+        setMessage(null)
         await onAuthChange()
       } else {
         await sendPasswordReset(email, intent)
@@ -1157,6 +1171,38 @@ function AuthBox({
           'Enviamos um link para redefinir sua senha. Verifique seu email.',
         )
       }
+    } catch (error) {
+      setMessage(getFriendlyAuthError(error))
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  const handleCodeConfirmation = async (
+    event: FormEvent<HTMLFormElement>,
+  ) => {
+    event.preventDefault()
+    if (saving || confirmationCode.length !== 6) return
+    setSaving(true)
+    setMessage(null)
+    try {
+      await verifySignupCode(confirmationEmail, confirmationCode)
+      setMessage('Email confirmado. Sua conta está pronta.')
+      await onAuthChange()
+    } catch (error) {
+      setMessage(getFriendlyAuthError(error))
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  const handleCodeResend = async () => {
+    if (saving) return
+    setSaving(true)
+    setMessage(null)
+    try {
+      await resendSignupCode(confirmationEmail, intent)
+      setMessage('Novo código enviado. Confira também a pasta de spam.')
     } catch (error) {
       setMessage(getFriendlyAuthError(error))
     } finally {
@@ -1188,6 +1234,86 @@ function AuthBox({
         <LogIn size={22} />
       </div>
       <p className="auth-copy">{description}</p>
+      {confirmationEmail ? (
+        <div className="confirmation-panel">
+          <div className="confirmation-heading">
+            <span className="confirmation-icon" aria-hidden="true">
+              <Mail size={21} />
+            </span>
+            <div>
+              <p className="section-kicker">Confirme seu email</p>
+              <h3>Digite o código recebido</h3>
+            </div>
+          </div>
+          <p>
+            Enviamos um código de seis dígitos para{' '}
+            <strong>{confirmationEmail}</strong>.
+          </p>
+          <form className="stack-form" onSubmit={handleCodeConfirmation}>
+            <label>
+              Código de confirmação
+              <input
+                className="confirmation-code"
+                required
+                autoComplete="one-time-code"
+                inputMode="numeric"
+                pattern="[0-9]{6}"
+                maxLength={6}
+                value={confirmationCode}
+                onChange={(event) =>
+                  setConfirmationCode(event.target.value.replace(/\D/g, ''))
+                }
+                placeholder="000000"
+                aria-describedby="confirmation-code-help"
+              />
+            </label>
+            <small id="confirmation-code-help">
+              O código expira por segurança. Use sempre o envio mais recente.
+            </small>
+            <button
+              className="primary-action"
+              disabled={saving || confirmationCode.length !== 6}
+              type="submit"
+            >
+              {saving ? (
+                <Loader2 className="spin" size={18} />
+              ) : (
+                <ShieldCheck size={18} />
+              )}
+              Confirmar código
+            </button>
+          </form>
+          <div className="confirmation-actions">
+            <button
+              className="secondary-action"
+              disabled={saving}
+              type="button"
+              onClick={() => void handleCodeResend()}
+            >
+              <RefreshCw size={17} />
+              Reenviar código
+            </button>
+            <button
+              className="text-action"
+              disabled={saving}
+              type="button"
+              onClick={() => {
+                setConfirmationEmail('')
+                setConfirmationCode('')
+                setMessage(null)
+              }}
+            >
+              Corrigir email
+            </button>
+          </div>
+          {message && (
+            <p className="form-message" role="status">
+              {message}
+            </p>
+          )}
+        </div>
+      ) : (
+        <>
       <div className="segmented auth-segmented">
         <button
           className={authMode === 'signin' ? 'active' : ''}
@@ -1334,6 +1460,8 @@ function AuthBox({
         <p className="form-message" role="status">
           {message}
         </p>
+      )}
+        </>
       )}
     </section>
   )

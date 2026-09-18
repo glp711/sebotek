@@ -111,6 +111,14 @@ https://sebo-virtual.vercel.app/auth/oauth
 
 O Sebo Virtual aproveita o nome e a foto publica da conta Google para criar o perfil. Se o usuario entrou pela area `Meu sebo`, o sistema preserva esse destino durante o redirecionamento. Ao cadastrar o estabelecimento, o perfil passa automaticamente para o papel `STORE_OWNER`.
 
+No cadastro com email e senha, o Supabase cria a conta e gera um codigo de seis digitos. A Brevo funciona como o servidor SMTP que entrega esse email. O usuario informa o codigo no Sebo Virtual e o Supabase valida o codigo antes de liberar a sessao.
+
+Responsabilidades do fluxo:
+
+- Google OAuth: Google identifica o usuario e o Supabase cria a sessao.
+- Email e senha: Supabase armazena a identidade, a senha protegida, gera e valida o codigo.
+- Brevo SMTP: entrega os emails de confirmacao e recuperacao enviados pelo Supabase.
+
 Ao criar conta, o Supabase envia um email de confirmacao. O link volta para:
 
 ```text
@@ -170,20 +178,29 @@ O Supabase limita o provedor de email padrao a poucos envios por hora. Se aparec
 
 Para destravar na hora, aguarde o limite renovar antes de testar novos cadastros. Para resolver de forma definitiva em producao, configure SMTP proprio em `Authentication > Emails > SMTP Settings` e depois ajuste os limites em `Authentication > Rate Limits`.
 
-### Configurando Resend como SMTP
+### Configurando Brevo como SMTP
 
-O Resend pode ser usado como provedor de email do Supabase Auth. Primeiro, crie uma conta no Resend, adicione um dominio e aguarde a verificacao dos registros DNS. Depois, crie uma API key em `https://resend.com/api-keys`.
+Na Brevo, abra `SMTP & API > SMTP`, confirme um remetente ou dominio e crie uma **SMTP key**. Nao use uma API key comum nem a senha da conta.
 
 No Supabase, abra `Authentication > Emails > SMTP Settings`, ative o SMTP customizado e use:
 
-- Sender email: um email do dominio verificado, por exemplo `no-reply@seudominio.com`
-- Sender name: `Sebo Virtual`
-- Host: `smtp.resend.com`
-- Port: `465`
-- Username: `resend`
-- Password: a API key criada no Resend
+- Sender email: email remetente confirmado na Brevo.
+- Sender name: `Sebo Virtual`.
+- Host: `smtp-relay.brevo.com`.
+- Port: `587`.
+- Username: o `SMTP login` exibido pela Brevo.
+- Password: a `SMTP key` criada na Brevo.
 
-Depois de salvar, faca um cadastro de teste no Sebo Virtual e confira o envio no painel `Logs` do Resend. Se o dominio ainda nao estiver verificado, os emails podem falhar mesmo com a API key correta.
+Depois, em `Authentication > Emails > Templates > Confirm signup`, inclua o codigo gerado pelo Supabase usando `{{ .Token }}`. Exemplo:
+
+```html
+<h2>Confirme seu cadastro no Sebo Virtual</h2>
+<p>Seu codigo de confirmacao e:</p>
+<p style="font-size: 28px; font-weight: bold;">{{ .Token }}</p>
+<p>Digite este codigo na tela de cadastro. Se voce nao solicitou esta conta, ignore este email.</p>
+```
+
+O codigo e validado por `supabase.auth.verifyOtp`, nao pela Brevo. A SMTP key fica somente no painel do Supabase e nunca deve ser adicionada ao frontend, `.env.local`, GitHub ou Vercel.
 
 ## Fluxo sugerido para demonstracao
 
