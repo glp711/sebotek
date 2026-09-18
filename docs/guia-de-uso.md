@@ -103,6 +103,14 @@ O Sebo Virtual possui dois fluxos de conta:
 - `Minha conta`: usado pelo leitor para manter perfil e wishlist.
 - `Meu sebo`: usado pelo responsavel pelo sebo para cadastrar o estabelecimento e publicar livros.
 
+Nas duas areas, o usuario pode entrar ou criar a conta com o botao `Continuar com Google`. Depois da autorizacao, o Google devolve o usuario para:
+
+```text
+https://sebo-virtual.vercel.app/auth/oauth
+```
+
+O Sebo Virtual aproveita o nome e a foto publica da conta Google para criar o perfil. Se o usuario entrou pela area `Meu sebo`, o sistema preserva esse destino durante o redirecionamento. Ao cadastrar o estabelecimento, o perfil passa automaticamente para o papel `STORE_OWNER`.
+
 Ao criar conta, o Supabase envia um email de confirmacao. O link volta para:
 
 ```text
@@ -132,9 +140,29 @@ No painel do Supabase, configure em `Authentication > URL Configuration`:
 - Redirect URLs principais:
   - `https://sebo-virtual.vercel.app/auth/confirm`
   - `https://sebo-virtual.vercel.app/auth/reset-password`
+  - `https://sebo-virtual.vercel.app/auth/oauth`
 - Redirect URLs locais: opcionais, apenas para desenvolvimento.
 
 Sem essas URLs liberadas, o Supabase pode bloquear o redirecionamento ou mandar o usuario para uma URL antiga, como `localhost`.
+
+### Configurando login com Google
+
+O botao de Google depende de uma configuracao unica no Google Cloud e no Supabase:
+
+1. No Google Auth Platform, configure `Branding`, `Audience` e os escopos `openid`, `userinfo.email` e `userinfo.profile`.
+2. Crie um OAuth Client ID do tipo `Web application`.
+3. Em `Authorized JavaScript origins`, adicione `https://sebo-virtual.vercel.app`.
+4. Em `Authorized redirect URIs`, adicione a callback do Supabase:
+
+```text
+https://foaiugorywlkvxevogpi.supabase.co/auth/v1/callback
+```
+
+5. Copie o Client ID e o Client Secret.
+6. No Supabase, abra `Authentication > Sign In / Providers > Google`, ative o provedor e informe os dois valores.
+7. Em `Authentication > URL Configuration`, confirme que `https://sebo-virtual.vercel.app/auth/oauth` esta na lista de Redirect URLs.
+
+O Client Secret fica somente no painel do Supabase. Ele nunca deve ser adicionado ao `.env.local`, ao GitHub ou ao codigo do frontend.
 
 ### Limite de envio de emails
 

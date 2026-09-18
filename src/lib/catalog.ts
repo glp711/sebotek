@@ -115,6 +115,7 @@ const bookDraftToRow = (draft: BookDraft) => ({
 })
 
 const productionOrigin = 'https://sebo-virtual.vercel.app'
+export const oauthIntentStorageKey = 'sebo-virtual:oauth-intent'
 
 const getAuthOrigin = () => {
   const configuredOrigin =
@@ -131,7 +132,7 @@ const getAuthOrigin = () => {
 }
 
 const getAuthRedirectUrl = (
-  path: '/auth/confirm' | '/auth/reset-password',
+  path: '/auth/confirm' | '/auth/reset-password' | '/auth/oauth',
   intent?: AuthIntent,
 ) => {
   const origin = getAuthOrigin()
@@ -251,6 +252,28 @@ export async function signIn(email: string, password: string) {
   if (!supabase) throw new Error('Configure o Supabase no arquivo .env.local.')
   const { error } = await supabase.auth.signInWithPassword({ email, password })
   if (error) throw error
+}
+
+export async function signInWithGoogle(intent: AuthIntent = 'customer') {
+  if (!supabase) throw new Error('Configure o Supabase no arquivo .env.local.')
+
+  if (typeof window !== 'undefined') {
+    window.sessionStorage.setItem(oauthIntentStorageKey, intent)
+  }
+
+  const { error } = await supabase.auth.signInWithOAuth({
+    provider: 'google',
+    options: {
+      redirectTo: getAuthRedirectUrl('/auth/oauth'),
+    },
+  })
+
+  if (error) {
+    if (typeof window !== 'undefined') {
+      window.sessionStorage.removeItem(oauthIntentStorageKey)
+    }
+    throw error
+  }
 }
 
 export async function signUp(

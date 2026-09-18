@@ -73,7 +73,13 @@ try {
     .getByRole('navigation')
     .getByRole('link', { name: 'Minha conta' })
     .click()
+  await page
+    .getByRole('button', { name: 'Continuar com Google', exact: true })
+    .waitFor()
   await page.getByRole('button', { name: 'Cadastrar', exact: true }).click()
+  await page
+    .getByRole('button', { name: 'Cadastrar com Google', exact: true })
+    .waitFor()
   await page.getByLabel('Nome', { exact: true }).fill('Teste de interface')
   await page
     .getByLabel('Email', { exact: true })
@@ -176,6 +182,17 @@ try {
   assert.ok(
     await page.getByRole('button', { name: 'Atualizar senha' }).isDisabled(),
   )
+  await page.evaluate(() =>
+    sessionStorage.setItem('sebo-virtual:oauth-intent', 'store'),
+  )
+  await page.goto(base + '/auth/oauth?error_description=Access%20denied', {
+    waitUntil: 'domcontentloaded',
+  })
+  await page
+    .getByRole('heading', { name: 'Não foi possível entrar com Google' })
+    .waitFor()
+  await page.getByRole('button', { name: 'Voltar para entrar' }).click()
+  assert.ok(page.url().endsWith('/meu-sebo'))
   assert.deepEqual(errors, [], 'No unhandled browser errors')
   console.log(
     JSON.stringify(
@@ -189,6 +206,7 @@ try {
           'filters',
           'grid/list',
           'account validation',
+          'Google OAuth entry and callback',
           'routes and back',
           'store catalog',
           'wishlist login',

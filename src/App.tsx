@@ -58,8 +58,10 @@ import {
   loadMyStore,
   loadMyProfile,
   loadMyWishlist,
+  oauthIntentStorageKey,
   sendPasswordReset,
   signIn,
+  signInWithGoogle,
   signOut,
   signUp,
   subscribeToAuth,
@@ -135,11 +137,18 @@ const getFriendlyAuthError = (error: unknown) => {
     return 'Confirme seu email antes de entrar.'
   }
 
+  if (
+    message.includes('provider is not enabled') ||
+    message.includes('unsupported provider')
+  ) {
+    return 'O login com Google ainda precisa ser ativado no painel do Supabase.'
+  }
+
   return error.message
 }
 
 type AppView = 'catalog' | 'stores' | 'client' | 'owner' | 'admin'
-type AuthRoute = 'confirm' | 'reset-password' | null
+type AuthRoute = 'confirm' | 'reset-password' | 'oauth' | null
 
 const viewPaths: Record<AppView, string> = {
   catalog: '/catalogo',
@@ -314,9 +323,11 @@ function App() {
         session={session}
         loading={identityLoading}
         onAuthChange={refreshSession}
-        onBack={() =>
-          showView(getAuthIntentFromUrl() === 'store' ? 'owner' : 'client')
-        }
+        onBack={() => {
+          const intent = getAuthIntentFromUrl()
+          window.sessionStorage.removeItem(oauthIntentStorageKey)
+          showView(intent === 'store' ? 'owner' : 'client')
+        }}
       />
     )
   }
@@ -620,13 +631,16 @@ function getAuthRoute(path = window.location.pathname): AuthRoute {
   if (typeof window === 'undefined') return null
   if (path === '/auth/confirm') return 'confirm'
   if (path === '/auth/reset-password') return 'reset-password'
+  if (path === '/auth/oauth') return 'oauth'
   return null
 }
 
 function getAuthIntentFromUrl(): AuthIntent {
   if (typeof window === 'undefined') return 'customer'
   const params = new URLSearchParams(window.location.search)
-  return params.get('intent') === 'store' ? 'store' : 'customer'
+  const intent =
+    params.get('intent') ?? window.sessionStorage.getItem(oauthIntentStorageKey)
+  return intent === 'store' ? 'store' : 'customer'
 }
 
 function AuthRoutePage({
@@ -687,10 +701,48 @@ function AuthRoutePage({
     <div className="auth-page-shell">
       <section className="auth-result-card">
         <span className="brand-mark" aria-hidden="true">
-          {route === 'confirm' ? <Mail size={24} /> : <KeyRound size={24} />}
+          {route === 'confirm' ? (
+            <Mail size={24} />
+          ) : route === 'oauth' ? (
+            <LogIn size={24} />
+          ) : (
+            <KeyRound size={24} />
+          )}
         </span>
 
-        {route === 'confirm' ? (
+        {route === 'oauth' ? (
+          <>
+            <p className="section-kicker">Acesso com Google</p>
+            <h1>
+              {errorMessage
+                ? 'Não foi possível entrar com Google'
+                : loading
+                  ? 'Conectando sua conta'
+                  : session
+                    ? 'Conta Google conectada'
+                    : 'Finalizando seu acesso'}
+            </h1>
+            <p>
+              {errorMessage
+                ? 'O Google não concluiu o acesso. Volte e tente novamente ou entre com email e senha.'
+                : session
+                  ? 'Seu acesso está pronto. Agora você pode continuar no Sebo Virtual.'
+                  : 'Aguarde enquanto confirmamos sua sessão com segurança.'}
+            </p>
+            <div className="dialog-actions">
+              <button className="primary-action" type="button" onClick={onBack}>
+                {session
+                  ? intent === 'store'
+                    ? 'Continuar para Meu sebo'
+                    : 'Continuar para Minha conta'
+                  : 'Voltar para entrar'}
+              </button>
+              <a className="secondary-action" href="/catalogo">
+                Voltar ao catálogo
+              </a>
+            </div>
+          </>
+        ) : route === 'confirm' ? (
           <>
             <p className="section-kicker">Confirmacao de email</p>
             <h1>
@@ -1112,6 +1164,18 @@ function AuthBox({
     }
   }
 
+  const handleGoogleAuth = async () => {
+    if (saving) return
+    setSaving(true)
+    setMessage(null)
+    try {
+      await signInWithGoogle(intent)
+    } catch (error) {
+      setMessage(getFriendlyAuthError(error))
+      setSaving(false)
+    }
+  }
+
   return (
     <section className="owner-card auth-card">
       <div className="section-heading compact">
@@ -1162,6 +1226,26 @@ function AuthBox({
           Recuperar senha
         </button>
       </div>
+      {authMode !== 'reset' && (
+        <>
+          <button
+            className="google-auth-button"
+            disabled={saving}
+            type="button"
+            onClick={() => void handleGoogleAuth()}
+          >
+            <span className="google-mark" aria-hidden="true">
+              G
+            </span>
+            {authMode === 'signup'
+              ? 'Cadastrar com Google'
+              : 'Continuar com Google'}
+          </button>
+          <div className="auth-divider" aria-hidden="true">
+            <span>ou use seu email</span>
+          </div>
+        </>
+      )}
       <form className="stack-form" onSubmit={handleAuth}>
         {authMode === 'signup' && (
           <label>
