@@ -17,9 +17,7 @@ import {
   Edit3,
   Eye,
   EyeOff,
-  ArrowRight,
   LogOut,
-  Leaf,
   ListFilter,
   Heart,
   ImageIcon,
@@ -42,6 +40,7 @@ import {
   X,
 } from 'lucide-react'
 import './App.css'
+import './original-theme.css'
 import { CatalogBrowser } from './components/CatalogBrowser'
 import { BookCover } from './components/BookCover'
 import { normalizeSearch, whatsappUrl } from './lib/catalogFilters'
@@ -86,6 +85,7 @@ import type {
 } from './types'
 
 const APP_NAME = 'Sebo Virtual'
+const APP_REGION = 'Rio de Janeiro'
 
 const conditionLabel: Record<BookCondition, string> = {
   NEW: 'Novo',
@@ -351,164 +351,145 @@ function App() {
       ? [{ view: 'admin' as AppView, icon: ShieldCheck }]
       : []),
   ]
+  const featuredBooks = books.slice(0, 4)
+  const verifiedStores = stores.filter((store) => store.approved).length
+  const totalInventory = books.reduce(
+    (total, book) => total + book.quantity,
+    0,
+  )
+
   return (
     <div className="app-shell">
       <a className="skip-link" href="#workspace">
         Pular para o conteúdo
       </a>
-      <div className="announcement">
-        <span>
-          <Leaf size={14} /> Livros circulam. Histórias continuam.
-        </span>
-        <span>Sebos independentes, perto de você.</span>
-      </div>
-      <header className="site-header">
-        <div className="topbar">
-          <a
-            className="brand"
-            href="/catalogo"
-            onClick={(event) => {
-              if (!event.ctrlKey && !event.metaKey) {
-                event.preventDefault()
-                showView('catalog')
-              }
-            }}
-            aria-label="Sebo Virtual, catálogo"
-          >
-            <span className="brand-mark">
-              <BookOpen size={26} strokeWidth={1.8} />
-            </span>
-            <span className="brand-name">
-              sebo<span>virtual</span>
-              <small>ENCONTRE. LEIA. RECOMECE.</small>
-            </span>
-          </a>
-          <form
-            className="search-box"
-            role="search"
-            onSubmit={(event) => {
+      <header className="topbar">
+        <a
+          className="brand"
+          href="/catalogo"
+          aria-label="Sebo Virtual, catálogo"
+          onClick={(event) => {
+            if (!event.ctrlKey && !event.metaKey) {
               event.preventDefault()
-              showView('catalog', query.trim())
-            }}
-          >
-            <Search size={19} aria-hidden="true" />
-            <input
-              aria-label="Buscar livros"
-              placeholder="Qual livro você está procurando?"
-              value={query}
-              onChange={(event) => setQuery(event.target.value)}
-            />
-            {query && (
-              <button
-                className="search-clear"
-                type="button"
-                aria-label="Limpar busca"
-                title="Limpar busca"
-                onClick={() => {
-                  setQuery('')
-                  showView('catalog')
-                }}
-              >
-                <X size={16} />
-              </button>
-            )}
-            <button type="submit" aria-label="Buscar">
-              <ArrowRight size={20} />
-            </button>
-          </form>
-          <a
-            className="account-link"
-            href="/conta"
-            onClick={(event) => {
-              if (!event.ctrlKey && !event.metaKey) {
-                event.preventDefault()
-                showView('client')
-              }
-            }}
-          >
-            <User size={21} />
-            <span>
-              <small>
-                {session ? 'Bem-vindo de volta' : 'Seu cantinho de leitura'}
-              </small>
-              <strong>{profile?.displayName ?? 'Entrar / Cadastrar'}</strong>
-            </span>
-          </a>
-        </div>
-        <div className="navigation-bar">
-          <nav className="nav-actions" aria-label="Navegação principal">
-            {navItems.map(({ view, icon: Icon }) => (
-              <a
-                key={view}
-                href={viewPaths[view]}
-                className={
-                  activeView === view ? 'nav-button active' : 'nav-button'
-                }
-                aria-current={activeView === view ? 'page' : undefined}
-                onClick={(event) => {
-                  if (!event.ctrlKey && !event.metaKey) {
-                    event.preventDefault()
-                    showView(view)
-                  }
-                }}
-              >
-                <Icon size={17} />
-                {viewNames[view]}
-              </a>
-            ))}
-          </nav>
-          <span className="nav-location">
-            <MapPin size={14} /> Rio de Janeiro
+              showView('catalog')
+            }
+          }}
+        >
+          <span className="brand-mark" aria-hidden="true">
+            <BookOpen size={24} strokeWidth={2.4} />
           </span>
-        </div>
+          <span className="brand-name">
+            Sebo <span>Virtual</span>
+          </span>
+        </a>
+
+        <nav className="nav-actions" aria-label="Navegação principal">
+          {navItems.map(({ view }) => (
+            <a
+              key={view}
+              href={viewPaths[view]}
+              className={
+                activeView === view ? 'nav-button active' : 'nav-button'
+              }
+              aria-current={activeView === view ? 'page' : undefined}
+              onClick={(event) => {
+                if (!event.ctrlKey && !event.metaKey) {
+                  event.preventDefault()
+                  showView(view)
+                }
+              }}
+            >
+              {viewNames[view]}
+            </a>
+          ))}
+        </nav>
       </header>
+
       <main>
-        {activeView === 'catalog' ? (
-          <section className="catalog-intro">
-            <div>
-              <p className="section-kicker">
-                Livros de segunda mão. Descobertas de primeira.
-              </p>
-              <h1>
-                Sebo Virtual<span>Um novo capítulo começa aqui.</span>
-              </h1>
-              <p>
-                Encontre seu próximo livro e converse direto com quem cuida
-                dele.
-              </p>
+        <section className="hero-panel" id="inicio">
+          <div className="hero-copy">
+            <div className="eyebrow">
+              <MapPin size={15} />
+              {APP_REGION}
             </div>
-            <div className="intro-index">
-              <span>
-                <strong>{loading ? '—' : books.length}</strong> títulos no
-                acervo
-              </span>
-              <span>
-                <strong>
-                  {loading
-                    ? '—'
-                    : stores.filter((store) => store.approved).length}
-                </strong>{' '}
-                sebos verificados
-              </span>
-            </div>
-          </section>
-        ) : (
-          <section className="page-heading">
-            <p className="section-kicker">
-              Sebo Virtual / {viewNames[activeView]}
-            </p>
-            <h1>{viewNames[activeView]}</h1>
+            <h1>Sebo Virtual conecta leitores a sebos independentes.</h1>
             <p>
-              {activeView === 'stores'
-                ? 'Conheça os sebos e descubra o que cada acervo guarda.'
-                : activeView === 'owner'
-                  ? 'Seu espaço para cuidar do sebo e dos seus livros.'
-                  : activeView === 'admin'
-                    ? 'Acompanhe os cadastros e revise os sebos da comunidade.'
-                    : 'Suas leituras, seus desejos e sua próxima descoberta.'}
+              Encontre livros usados por título, autor, categoria ou ISBN e
+              fale direto com o sebo que tem o exemplar disponível.
             </p>
-          </section>
-        )}
+            <form
+              className="search-box"
+              role="search"
+              onSubmit={(event) => {
+                event.preventDefault()
+                showView('catalog', query.trim())
+              }}
+            >
+              <Search aria-hidden="true" size={22} />
+              <input
+                aria-label="Buscar livros"
+                placeholder="Ex: Marina, romance histórico, 978..."
+                value={query}
+                onChange={(event) => setQuery(event.target.value)}
+              />
+              <button type="submit">
+                {loading ? (
+                  <Loader2 className="spin" size={18} />
+                ) : (
+                  <Search size={18} />
+                )}
+                Buscar
+              </button>
+            </form>
+            <div
+              className={`status-strip ${loadError || source === 'demo' ? 'warning' : 'success'}`}
+              role="status"
+            >
+              {loadError || source === 'demo' ? (
+                <AlertTriangle size={16} />
+              ) : (
+                <CheckCircle2 size={16} />
+              )}
+              {source === 'demo'
+                ? 'Acervo de demonstração ativo'
+                : loadError
+                  ? 'Catálogo temporariamente indisponível'
+                  : 'Catálogo conectado ao Supabase'}
+            </div>
+          </div>
+
+          <div className="hero-visual" aria-label="Resumo do acervo">
+            <div className="stacked-books" aria-hidden="true">
+              {featuredBooks.map((book, index) => (
+                <div
+                  className={`book-spine spine-${index + 1}`}
+                  key={book.id}
+                >
+                  <span>{book.title}</span>
+                  <small>{book.author}</small>
+                </div>
+              ))}
+            </div>
+            <div className="hero-stats">
+              <div className="metric-card">
+                <BookOpen size={18} />
+                <span>Livros</span>
+                <strong>{books.length}</strong>
+              </div>
+              <div className="metric-card">
+                <Store size={18} />
+                <span>Sebos verificados</span>
+                <strong>{verifiedStores || stores.length}</strong>
+              </div>
+              <div className="metric-card">
+                <Heart size={18} />
+                <span>Exemplares</span>
+                <strong>{totalInventory}</strong>
+              </div>
+            </div>
+          </div>
+        </section>
+
         <section className="workspace" id="workspace" tabIndex={-1}>
           {notice && (
             <div className="notice-banner" role="status">
@@ -608,21 +589,6 @@ function App() {
           )}
         </section>
       </main>
-      <footer className="site-footer">
-        <div>
-          <BookOpen size={21} />
-          <strong>Sebo Virtual</strong>
-          <span>Novas histórias para livros que continuam.</span>
-        </div>
-        <a
-          href="https://www.gov.br/governodigital/pt-br/acessibilidade-e-usuario/vlibras"
-          target="_blank"
-          rel="noreferrer"
-        >
-          Acessibilidade com VLibras <ArrowRight size={14} />
-        </a>
-        <small>Projeto acadêmico · Rio de Janeiro</small>
-      </footer>
       {selectedBook && (
         <BookDetailDialog
           book={selectedBook}
