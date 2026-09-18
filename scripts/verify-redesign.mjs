@@ -28,6 +28,11 @@ try {
   const first = page.locator('.book-card-main').first()
   await first.click()
   await page.getByRole('dialog').waitFor()
+  assert.ok(
+    new URL(page.url()).searchParams.has('livro'),
+    'Book dialog should have a shareable URL',
+  )
+  await page.getByRole('button', { name: 'Copiar link' }).waitFor()
   assert.equal(
     await page.evaluate(() =>
       document.activeElement?.getAttribute('aria-label'),
@@ -46,6 +51,7 @@ try {
   await page.screenshot({ path: path.join(output, 'book-details.png') })
   await page.keyboard.press('Escape')
   assert.equal(await page.getByRole('dialog').count(), 0)
+  assert.equal(new URL(page.url()).searchParams.has('livro'), false)
   assert.ok(
     await first.evaluate((element) => element === document.activeElement),
     'Focus returns to book',

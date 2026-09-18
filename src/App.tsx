@@ -22,6 +22,7 @@ import {
   Heart,
   ImageIcon,
   KeyRound,
+  Link2,
   Loader2,
   LogIn,
   MapPin,
@@ -218,6 +219,14 @@ function App() {
       setStores(payload.stores)
       setSource(payload.source)
       setLoadError(payload.error ?? null)
+      const linkedBookId = new URLSearchParams(window.location.search).get(
+        'livro',
+      )
+      if (linkedBookId) {
+        setSelectedBook(
+          payload.books.find((book) => book.id === linkedBookId) ?? null,
+        )
+      }
     } catch {
       if (request === catalogRequest.current)
         setLoadError('Não foi possível atualizar o acervo. Tente novamente.')
@@ -263,7 +272,26 @@ function App() {
     setSearchTerm(term)
     setStoreFilter(storeId)
     setSelectedBook(null)
-    window.scrollTo({ top: 0, behavior: 'instant' })
+    window.setTimeout(() => {
+      document.getElementById('workspace')?.scrollIntoView({
+        behavior: 'smooth',
+        block: 'start',
+      })
+    }, 0)
+  }, [])
+
+  const openBook = useCallback((book: BookRecord) => {
+    const url = new URL(window.location.href)
+    url.searchParams.set('livro', book.id)
+    window.history.pushState({}, '', url.pathname + url.search)
+    setSelectedBook(book)
+  }, [])
+
+  const closeBook = useCallback(() => {
+    const url = new URL(window.location.href)
+    url.searchParams.delete('livro')
+    window.history.replaceState({}, '', url.pathname + url.search)
+    setSelectedBook(null)
   }, [])
 
   const cancelRequests = useCallback(() => {
@@ -285,27 +313,33 @@ function App() {
         if (active) void refreshSession()
       }, 0)
     })
+    return () => {
+      active = false
+      cancelRequests()
+      unsubscribe()
+    }
+  }, [refreshCatalog, refreshSession, cancelRequests])
+
+  useEffect(() => {
     const onPopState = () => {
       const params = new URLSearchParams(window.location.search)
+      const bookId = params.get('livro')
       setActiveView(currentView())
       setPagePath(window.location.pathname)
       setSearchTerm(params.get('q') ?? '')
       setQuery(params.get('q') ?? '')
       setStoreFilter(params.get('sebo') ?? '')
-      setSelectedBook(null)
+      setSelectedBook(
+        bookId ? books.find((book) => book.id === bookId) ?? null : null,
+      )
     }
     window.addEventListener('popstate', onPopState)
-    return () => {
-      active = false
-      cancelRequests()
-      unsubscribe()
-      window.removeEventListener('popstate', onPopState)
-    }
-  }, [refreshCatalog, refreshSession, cancelRequests])
+    return () => window.removeEventListener('popstate', onPopState)
+  }, [books])
 
   useEffect(() => {
-    document.title = `${authRoute ? 'Acesso à conta' : viewNames[activeView]} | Sebo Virtual`
-  }, [activeView, authRoute])
+    document.title = `${selectedBook?.title ?? (authRoute ? 'Acesso à conta' : viewNames[activeView])} | Sebo Virtual`
+  }, [activeView, authRoute, selectedBook])
 
   const saveBook = async (book: BookRecord) => {
     if (!session) {
@@ -432,7 +466,18 @@ function App() {
                 value={query}
                 onChange={(event) => setQuery(event.target.value)}
               />
-              <button type="submit">
+              {query && (
+                <button
+                  className="hero-search-clear"
+                  type="button"
+                  aria-label="Limpar busca"
+                  title="Limpar busca"
+                  onClick={() => showView('catalog')}
+                >
+                  <X size={17} />
+                </button>
+              )}
+              <button type="submit" className="hero-search-submit">
                 {loading ? (
                   <Loader2 className="spin" size={18} />
                 ) : (
@@ -533,7 +578,7 @@ function App() {
               query={searchTerm}
               storeId={storeFilter}
               onClearSearch={() => showView('catalog')}
-              onSelectBook={setSelectedBook}
+              onSelectBook={openBook}
               onRefresh={() => void refreshCatalog()}
               onSaveBook={(book) => void saveBook(book)}
               savedTitles={savedTitles}
@@ -592,7 +637,7 @@ function App() {
       {selectedBook && (
         <BookDetailDialog
           book={selectedBook}
-          onClose={() => setSelectedBook(null)}
+          onClose={closeBook}
           onSave={() => void saveBook(selectedBook)}
           saved={savedTitles.includes(selectedBook.title)}
           saving={savingBookId !== null}
@@ -826,6 +871,18 @@ function BookDetailDialog({
 }) {
   const whatsapp = allowContact ? getWhatsappUrl(book) : undefined
   const dialogRef = useRef<HTMLElement>(null)
+  const [linkCopied, setLinkCopied] = useState(false)
+
+  const copyBookLink = async () => {
+    try {
+      await navigator.clipboard.writeText(window.location.href)
+      setLinkCopied(true)
+      window.setTimeout(() => setLinkCopied(false), 2200)
+    } catch {
+      setLinkCopied(false)
+    }
+  }
+
   useEffect(() => {
     const previousFocus = document.activeElement as HTMLElement | null
     const previousOverflow = document.body.style.overflow
@@ -971,6 +1028,14 @@ function BookDetailDialog({
                 : saving
                   ? 'Salvando...'
                   : 'Salvar nos desejos'}
+            </button>
+            <button
+              className="secondary-action"
+              type="button"
+              onClick={() => void copyBookLink()}
+            >
+              {linkCopied ? <CheckCircle2 size={17} /> : <Link2 size={17} />}
+              {linkCopied ? 'Link copiado' : 'Copiar link'}
             </button>
           </div>
         </div>
