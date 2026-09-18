@@ -13,6 +13,120 @@
   color: var(--color-primary);
 }
 
+.wishlist-nav-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+}
+
+.wishlist-nav-button svg {
+  color: var(--color-primary);
+}
+
+.wishlist-nav-button strong {
+  min-width: 21px;
+  height: 21px;
+  display: inline-grid;
+  place-items: center;
+  border: 1px solid var(--color-border);
+  border-radius: 6px;
+  color: var(--color-primary);
+  background: rgba(247, 245, 238, 0.06);
+  font-size: 11px;
+}
+
+.wishlist-nav-button.active svg {
+  color: var(--color-bg);
+}
+
+.wishlist-nav-button.active strong {
+  color: var(--color-primary);
+  border-color: var(--color-bg);
+  background: var(--color-bg);
+}
+
+#wishlist-panel:focus {
+  outline: 2px solid rgba(200, 255, 0, 0.48);
+  outline-offset: 4px;
+}
+
+.stack-form input,
+.stack-form select,
+.stack-form textarea,
+.filter-field input,
+.filter-field select {
+  color-scheme: dark;
+  caret-color: var(--color-primary);
+}
+
+.stack-form input::placeholder,
+.stack-form textarea::placeholder,
+.filter-field input::placeholder {
+  color: var(--color-subtle);
+  opacity: 1;
+}
+
+input:-webkit-autofill,
+input:-webkit-autofill:hover,
+input:-webkit-autofill:focus {
+  -webkit-text-fill-color: var(--color-paper);
+  box-shadow: 0 0 0 1000px var(--color-surface-2) inset;
+  caret-color: var(--color-primary);
+}
+
+.google-auth-button {
+  color: var(--color-paper);
+  border-color: var(--color-border);
+  background: var(--color-surface-2);
+}
+
+.google-auth-button:hover:not(:disabled) {
+  color: var(--color-bg);
+  border-color: var(--color-primary);
+  background: var(--color-primary);
+}
+
+.auth-divider {
+  color: var(--color-subtle);
+}
+
+.auth-divider::before,
+.auth-divider::after {
+  background: var(--color-border);
+}
+
+.confirmation-panel {
+  border-color: rgba(200, 255, 0, 0.28);
+  color: var(--color-paper);
+  background: var(--color-surface-2);
+}
+
+.confirmation-icon {
+  border-color: rgba(200, 255, 0, 0.36);
+  color: var(--color-bg);
+  background: var(--color-primary);
+}
+
+.confirmation-panel > p,
+.confirmation-panel small {
+  color: var(--color-muted);
+}
+
+.confirmation-code {
+  color: var(--color-paper);
+  -webkit-text-fill-color: var(--color-paper);
+  background: var(--color-bg);
+  border-color: rgba(200, 255, 0, 0.34);
+}
+
+.text-action {
+  color: var(--color-primary);
+}
+
+.password-field button {
+  color: var(--color-muted);
+}
+
 .search-box button {
   width: auto;
   height: 44px;
@@ -1364,6 +1478,7 @@ h2 {
   place-items: center;
   margin: 0 auto;
   padding: 28px 0;
+  background: var(--color-bg);
 }
 
 .auth-result-card {

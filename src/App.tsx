@@ -87,6 +87,8 @@ import type {
 
 const APP_NAME = 'Sebo Virtual'
 const APP_REGION = 'Rio de Janeiro'
+const MIN_CONFIRMATION_CODE_LENGTH = 6
+const MAX_CONFIRMATION_CODE_LENGTH = 12
 
 const conditionLabel: Record<BookCondition, string> = {
   NEW: 'Novo',
@@ -294,6 +296,21 @@ function App() {
     setSelectedBook(null)
   }, [])
 
+  const showWishlist = useCallback(() => {
+    const url = new URL('/conta', window.location.origin)
+    url.searchParams.set('secao', 'desejos')
+    window.history.pushState({}, '', url.pathname + url.search)
+    setPagePath(url.pathname)
+    setActiveView('client')
+    setSelectedBook(null)
+    window.setTimeout(() => {
+      document.getElementById('wishlist-panel')?.scrollIntoView({
+        behavior: 'smooth',
+        block: 'start',
+      })
+    }, 0)
+  }, [])
+
   const cancelRequests = useCallback(() => {
     catalogRequest.current++
     identityRequest.current++
@@ -391,6 +408,9 @@ function App() {
     (total, book) => total + book.quantity,
     0,
   )
+  const wishlistView =
+    activeView === 'client' &&
+    new URLSearchParams(window.location.search).get('secao') === 'desejos'
 
   return (
     <div className="app-shell">
@@ -423,9 +443,15 @@ function App() {
               key={view}
               href={viewPaths[view]}
               className={
-                activeView === view ? 'nav-button active' : 'nav-button'
+                activeView === view && !(view === 'client' && wishlistView)
+                  ? 'nav-button active'
+                  : 'nav-button'
               }
-              aria-current={activeView === view ? 'page' : undefined}
+              aria-current={
+                activeView === view && !(view === 'client' && wishlistView)
+                  ? 'page'
+                  : undefined
+              }
               onClick={(event) => {
                 if (!event.ctrlKey && !event.metaKey) {
                   event.preventDefault()
@@ -436,6 +462,26 @@ function App() {
               {viewNames[view]}
             </a>
           ))}
+          <a
+            href="/conta?secao=desejos"
+            className={
+              wishlistView
+                ? 'nav-button wishlist-nav-button active'
+                : 'nav-button wishlist-nav-button'
+            }
+            aria-current={wishlistView ? 'page' : undefined}
+            aria-label={`Lista de desejos, ${savedTitles.length} ${savedTitles.length === 1 ? 'item' : 'itens'}`}
+            onClick={(event) => {
+              if (!event.ctrlKey && !event.metaKey) {
+                event.preventDefault()
+                showWishlist()
+              }
+            }}
+          >
+            <Heart size={16} />
+            <span>Lista de desejos</span>
+            <strong>{savedTitles.length}</strong>
+          </a>
         </nav>
       </header>
 
@@ -613,6 +659,7 @@ function App() {
                   session={session}
                   onAuthChange={refreshSession}
                   onCatalogSearch={(term) => showView('catalog', term)}
+                  focusWishlist={wishlistView}
                 />
               )}
               {activeView === 'owner' && (
@@ -1213,7 +1260,12 @@ function AuthBox({
     event: FormEvent<HTMLFormElement>,
   ) => {
     event.preventDefault()
-    if (saving || confirmationCode.length !== 6) return
+    if (
+      saving ||
+      confirmationCode.length < MIN_CONFIRMATION_CODE_LENGTH ||
+      confirmationCode.length > MAX_CONFIRMATION_CODE_LENGTH
+    )
+      return
     setSaving(true)
     setMessage(null)
     try {
@@ -1277,7 +1329,7 @@ function AuthBox({
             </div>
           </div>
           <p>
-            Enviamos um código de seis dígitos para{' '}
+            Enviamos um código numérico para{' '}
             <strong>{confirmationEmail}</strong>.
           </p>
           <form className="stack-form" onSubmit={handleCodeConfirmation}>
@@ -1288,22 +1340,32 @@ function AuthBox({
                 required
                 autoComplete="one-time-code"
                 inputMode="numeric"
-                pattern="[0-9]{6}"
-                maxLength={6}
+                pattern="[0-9]{6,12}"
+                minLength={MIN_CONFIRMATION_CODE_LENGTH}
+                maxLength={MAX_CONFIRMATION_CODE_LENGTH}
                 value={confirmationCode}
                 onChange={(event) =>
-                  setConfirmationCode(event.target.value.replace(/\D/g, ''))
+                  setConfirmationCode(
+                    event.target.value
+                      .replace(/\D/g, '')
+                      .slice(0, MAX_CONFIRMATION_CODE_LENGTH),
+                  )
                 }
-                placeholder="000000"
+                placeholder="Digite o código recebido"
                 aria-describedby="confirmation-code-help"
               />
             </label>
             <small id="confirmation-code-help">
-              O código expira por segurança. Use sempre o envio mais recente.
+              Aceitamos códigos de 6 a 12 dígitos. Use sempre o envio mais
+              recente.
             </small>
             <button
               className="primary-action"
-              disabled={saving || confirmationCode.length !== 6}
+              disabled={
+                saving ||
+                confirmationCode.length < MIN_CONFIRMATION_CODE_LENGTH ||
+                confirmationCode.length > MAX_CONFIRMATION_CODE_LENGTH
+              }
               type="submit"
             >
               {saving ? (
@@ -1502,10 +1564,12 @@ function ClientPanel({
   session,
   onAuthChange,
   onCatalogSearch,
+  focusWishlist,
 }: {
   session: AuthSession | null
   onAuthChange: () => Promise<void>
   onCatalogSearch: (term: string) => void
+  focusWishlist: boolean
 }) {
   const [profile, setProfile] = useState<ProfileRecord | null>(null)
   const [wishlist, setWishlist] = useState<WishlistRecord[]>([])
@@ -1540,6 +1604,16 @@ function ClientPanel({
         ),
       )
   }, [refreshClientData])
+
+  useEffect(() => {
+    if (!focusWishlist) return
+    const frame = window.requestAnimationFrame(() => {
+      const panel = document.getElementById('wishlist-panel')
+      panel?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+      panel?.focus({ preventScroll: true })
+    })
+    return () => window.cancelAnimationFrame(frame)
+  }, [focusWishlist, session, wishlist.length])
 
   const handleProfile = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
@@ -1611,7 +1685,11 @@ function ClientPanel({
           description="Entre ou crie sua conta para guardar os livros que deseja encontrar."
           onAuthChange={onAuthChange}
         />
-        <aside className="owner-note">
+        <aside
+          className="owner-note"
+          id="wishlist-panel"
+          tabIndex={-1}
+        >
           <Heart size={24} />
           <h3>Wishlist do leitor</h3>
           <p>
@@ -1706,7 +1784,11 @@ function ClientPanel({
         {message && <p className="form-message">{message}</p>}
       </section>
 
-      <aside className="owner-note wishlist-note">
+      <aside
+        className="owner-note wishlist-note"
+        id="wishlist-panel"
+        tabIndex={-1}
+      >
         <Heart size={24} />
         <h3>Livros desejados</h3>
         {wishlist.length === 0 ? (
