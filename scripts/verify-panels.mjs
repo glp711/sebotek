@@ -113,7 +113,7 @@ page.on('pageerror', (error) => errors.push(error.message))
 try {
   await page.goto(base + '/meu-sebo', { waitUntil: 'domcontentloaded' })
   await page
-    .getByRole('heading', { name: 'Sebo aguardando aprovacao' })
+    .getByRole('heading', { name: 'Sebo aguardando aprovação' })
     .waitFor()
   assert.equal(await page.locator('#book-editor').count(), 0)
   await page.screenshot({
@@ -135,17 +135,17 @@ try {
   const editor = page.locator('#book-editor')
   await editor.waitFor()
   await editor
-    .getByLabel('Titulo', { exact: true })
+    .getByLabel('Título', { exact: true })
     .fill('Livro de verificação')
   await editor.getByLabel('Autor', { exact: true }).fill('Autor de teste')
-  await editor.getByLabel('Preco', { exact: true }).fill('29.90')
+  await editor.getByLabel('Preço', { exact: true }).fill('29.90')
   await editor
     .getByRole('button', { name: 'Cadastrar livro', exact: true })
     .click()
   await page.locator('.inventory-item').waitFor()
   assert.equal(books.length, 1)
   await page.getByRole('button', { name: 'Editar livro', exact: true }).click()
-  await editor.getByLabel('Preco', { exact: true }).fill('19.90')
+  await editor.getByLabel('Preço', { exact: true }).fill('19.90')
   await editor
     .getByRole('button', { name: 'Salvar alteracoes', exact: true })
     .click()

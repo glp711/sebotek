@@ -45,6 +45,7 @@ import './original-theme.css'
 import { CatalogBrowser } from './components/CatalogBrowser'
 import { BookCover } from './components/BookCover'
 import { normalizeSearch, whatsappUrl } from './lib/catalogFilters'
+import { friendlyErrorMessage } from './lib/friendlyErrors'
 import {
   createBook,
   createStoreRequest,
@@ -122,43 +123,9 @@ const getWhatsappUrl = (book: BookRecord) =>
   book.store?.phone
     ? whatsappUrl(
         book.store.phone,
-        `Oi! Vi no Sebo Virtual o livro "${book.title}" de ${book.author}. Ainda esta disponivel?`,
+        `Oi! Vi no Sebo Virtual o livro "${book.title}" de ${book.author}. Ainda está disponível?`,
       )
     : undefined
-
-const getFriendlyAuthError = (error: unknown) => {
-  if (!(error instanceof Error)) return 'Nao foi possivel concluir a acao.'
-
-  const message = error.message.toLowerCase()
-  if (message.includes('email rate limit') || message.includes('rate limit')) {
-    return 'O envio de emails esta temporariamente indisponivel por excesso de solicitacoes. Aguarde antes de tentar novamente. Se sua conta ja foi confirmada, voce pode entrar normalmente.'
-  }
-
-  if (message.includes('invalid login credentials')) {
-    return 'Email ou senha incorretos.'
-  }
-
-  if (message.includes('email not confirmed')) {
-    return 'Confirme seu email antes de entrar.'
-  }
-
-  if (message.includes('token has expired') || message.includes('otp_expired')) {
-    return 'O código expirou. Solicite um novo código e tente novamente.'
-  }
-
-  if (message.includes('invalid token') || message.includes('token is invalid')) {
-    return 'Código inválido. Confira os seis números recebidos por email.'
-  }
-
-  if (
-    message.includes('provider is not enabled') ||
-    message.includes('unsupported provider')
-  ) {
-    return 'O login com Google ainda precisa ser ativado no painel do Supabase.'
-  }
-
-  return error.message
-}
 
 type AppView = 'catalog' | 'stores' | 'client' | 'owner' | 'admin'
 type AuthRoute = 'confirm' | 'reset-password' | 'oauth' | null
@@ -744,7 +711,7 @@ function AuthRoutePage({
   const handlePasswordUpdate = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
     if (password !== confirmPassword) {
-      setMessage('As senhas nao conferem.')
+      setMessage('As senhas não conferem.')
       return
     }
 
@@ -753,12 +720,10 @@ function AuthRoutePage({
     try {
       await updatePassword(password)
       await onAuthChange()
-      setMessage('Senha atualizada. Voce ja pode continuar usando sua conta.')
+      setMessage('Senha atualizada. Você já pode continuar usando sua conta.')
     } catch (error) {
       setMessage(
-        error instanceof Error
-          ? error.message
-          : 'Nao foi possivel atualizar a senha.',
+        friendlyErrorMessage(error, 'Não foi possível atualizar a senha.'),
       )
     } finally {
       setSaving(false)
@@ -812,7 +777,7 @@ function AuthRoutePage({
           </>
         ) : route === 'confirm' ? (
           <>
-            <p className="section-kicker">Confirmacao de email</p>
+            <p className="section-kicker">Confirmação de email</p>
             <h1>
               {errorMessage
                 ? 'Não foi possível confirmar'
@@ -836,7 +801,7 @@ function AuthRoutePage({
                   : 'Ir para Minha conta'}
               </button>
               <a className="secondary-action" href="/">
-                Voltar ao catalogo
+                Voltar ao catálogo
               </a>
             </div>
           </>
@@ -996,7 +961,7 @@ function BookDetailDialog({
           <p className="dialog-author">{book.author}</p>
           <p className="dialog-summary">
             {book.summary ??
-              'Exemplar disponivel no acervo de um sebo parceiro.'}
+              'Exemplar disponível no acervo de um sebo parceiro.'}
           </p>
 
           <div className="dialog-facts">
@@ -1148,7 +1113,7 @@ function StoresView({
                 <span
                   className={store.approved ? 'approval approved' : 'approval'}
                 >
-                  {store.approved ? 'Verificado' : 'Em analise'}
+                  {store.approved ? 'Verificado' : 'Em análise'}
                 </span>
               </div>
               <h3>{store.name}</h3>
@@ -1250,7 +1215,7 @@ function AuthBox({
         )
       }
     } catch (error) {
-      setMessage(getFriendlyAuthError(error))
+      setMessage(friendlyErrorMessage(error))
     } finally {
       setSaving(false)
     }
@@ -1273,7 +1238,7 @@ function AuthBox({
       setMessage('Email confirmado. Sua conta está pronta.')
       await onAuthChange()
     } catch (error) {
-      setMessage(getFriendlyAuthError(error))
+      setMessage(friendlyErrorMessage(error))
     } finally {
       setSaving(false)
     }
@@ -1287,7 +1252,7 @@ function AuthBox({
       await resendSignupCode(confirmationEmail, intent)
       setMessage('Novo código enviado. Confira também a pasta de spam.')
     } catch (error) {
-      setMessage(getFriendlyAuthError(error))
+      setMessage(friendlyErrorMessage(error))
     } finally {
       setSaving(false)
     }
@@ -1300,7 +1265,7 @@ function AuthBox({
     try {
       await signInWithGoogle(intent)
     } catch (error) {
-      setMessage(getFriendlyAuthError(error))
+      setMessage(friendlyErrorMessage(error))
       setSaving(false)
     }
   }
@@ -1472,6 +1437,7 @@ function AuthBox({
             <input
               required
               value={displayName}
+              maxLength={80}
               autoComplete="name"
               onChange={(event) => setDisplayName(event.target.value)}
               placeholder={
@@ -1626,9 +1592,7 @@ function ClientPanel({
       setMessage('Perfil atualizado.')
     } catch (error) {
       setMessage(
-        error instanceof Error
-          ? error.message
-          : 'Nao foi possivel atualizar o perfil.',
+        friendlyErrorMessage(error, 'Não foi possível atualizar o perfil.'),
       )
     } finally {
       setSaving(false)
@@ -1648,9 +1612,7 @@ function ClientPanel({
       await onAuthChange()
     } catch (error) {
       setMessage(
-        error instanceof Error
-          ? error.message
-          : 'Nao foi possivel salvar a wishlist.',
+        friendlyErrorMessage(error, 'Não foi possível salvar a wishlist.'),
       )
     } finally {
       setSaving(false)
@@ -1667,9 +1629,7 @@ function ClientPanel({
       await onAuthChange()
     } catch (error) {
       setMessage(
-        error instanceof Error
-          ? error.message
-          : 'Nao foi possivel remover o item.',
+        friendlyErrorMessage(error, 'Não foi possível remover o item.'),
       )
     } finally {
       setSaving(false)
@@ -1693,8 +1653,8 @@ function ClientPanel({
           <Heart size={24} />
           <h3>Wishlist do leitor</h3>
           <p>
-            O cliente pode salvar livros que ainda nao encontrou e voltar ao
-            catalogo quando quiser pesquisar por eles.
+            O cliente pode salvar livros que ainda não encontrou e voltar ao
+            catálogo quando quiser pesquisar por eles.
           </p>
           <div className="owner-checklist" aria-label="Recursos do cliente">
             <span>Busca salva</span>
@@ -1733,6 +1693,7 @@ function ClientPanel({
             <input
               required
               value={displayName}
+              maxLength={80}
               onChange={(event) => setDisplayName(event.target.value)}
             />
           </label>
@@ -1756,10 +1717,11 @@ function ClientPanel({
             </div>
           </div>
           <label>
-            Titulo
+            Título
             <input
               required
               value={wishlistTitle}
+              maxLength={300}
               onChange={(event) => setWishlistTitle(event.target.value)}
               placeholder="Ex: Ensaio sobre a cegueira"
             />
@@ -1768,6 +1730,7 @@ function ClientPanel({
             Autor
             <input
               value={wishlistAuthor}
+              maxLength={200}
               onChange={(event) => setWishlistAuthor(event.target.value)}
               placeholder="Opcional"
             />
@@ -1793,7 +1756,7 @@ function ClientPanel({
         <h3>Livros desejados</h3>
         {wishlist.length === 0 ? (
           <p>
-            Nenhum livro salvo ainda. Adicione um titulo para acompanhar depois.
+            Nenhum livro salvo ainda. Adicione um título para acompanhar depois.
           </p>
         ) : (
           <div className="wishlist-list">
@@ -1807,7 +1770,7 @@ function ClientPanel({
                   <button
                     className="icon-button"
                     type="button"
-                    title="Buscar no catalogo"
+                    title="Buscar no catálogo"
                     onClick={() =>
                       onCatalogSearch(
                         [item.title, item.author].filter(Boolean).join(' '),
@@ -1905,9 +1868,7 @@ function OwnerPanel({
       .catch((error) => {
         if (active) {
           setMessage(
-            error instanceof Error
-              ? error.message
-              : 'Nao foi possivel carregar o painel.',
+            friendlyErrorMessage(error, 'Não foi possível carregar o painel.'),
           )
         }
       })
@@ -1978,16 +1939,14 @@ function OwnerPanel({
     setMessage(null)
     try {
       await createStoreRequest(storeDraft)
-      setMessage('Sebo enviado para aprovacao.')
+      setMessage('Sebo enviado para aprovação.')
       const loadedStore = await loadMyStore()
       setStore(loadedStore)
       if (loadedStore) await refreshOwnerBooks(loadedStore.id)
       onCatalogChange()
     } catch (error) {
       setMessage(
-        error instanceof Error
-          ? error.message
-          : 'Nao foi possivel cadastrar o sebo.',
+        friendlyErrorMessage(error, 'Não foi possível cadastrar o sebo.'),
       )
     } finally {
       setSaving(false)
@@ -2011,9 +1970,7 @@ function OwnerPanel({
       onCatalogChange()
     } catch (error) {
       setMessage(
-        error instanceof Error
-          ? error.message
-          : 'Nao foi possivel cadastrar o livro.',
+        friendlyErrorMessage(error, 'Não foi possível cadastrar o livro.'),
       )
     } finally {
       setSaving(false)
@@ -2034,9 +1991,7 @@ function OwnerPanel({
       onCatalogChange()
     } catch (error) {
       setMessage(
-        error instanceof Error
-          ? error.message
-          : 'Nao foi possivel remover o livro.',
+        friendlyErrorMessage(error, 'Não foi possível remover o livro.'),
       )
     } finally {
       setSaving(false)
@@ -2049,15 +2004,15 @@ function OwnerPanel({
         <AuthBox
           intent="store"
           title="Entrar no painel"
-          description="Acesse sua conta para cadastrar o sebo, enviar o perfil para aprovacao e publicar livros no acervo."
+          description="Acesse sua conta para cadastrar o sebo, enviar o perfil para aprovação e publicar livros no acervo."
           onAuthChange={onAuthChange}
         />
 
         <aside className="owner-note">
           <ShieldCheck size={24} />
-          <h3>Cadastro com aprovacao</h3>
+          <h3>Cadastro com aprovação</h3>
           <p>
-            O responsavel cria conta, envia o cadastro do sebo para aprovacao e
+            O responsável cria conta, envia o cadastro do sebo para aprovação e
             depois gerencia os livros. A equipe revisa os dados do
             estabelecimento antes de liberar o acervo.
           </p>
@@ -2135,6 +2090,7 @@ function OwnerPanel({
               <input
                 required
                 value={storeDraft.name}
+                maxLength={120}
                 onChange={(event) =>
                   setStoreDraft({ ...storeDraft, name: event.target.value })
                 }
@@ -2144,6 +2100,7 @@ function OwnerPanel({
               Descricao
               <textarea
                 value={storeDraft.description}
+                maxLength={2000}
                 onChange={(event) =>
                   setStoreDraft({
                     ...storeDraft,
@@ -2158,6 +2115,7 @@ function OwnerPanel({
                 <input
                   required
                   value={storeDraft.city}
+                  maxLength={120}
                   onChange={(event) =>
                     setStoreDraft({ ...storeDraft, city: event.target.value })
                   }
@@ -2176,10 +2134,11 @@ function OwnerPanel({
               </label>
             </div>
             <label>
-              Endereco
+              Endereço
               <input
                 required
                 value={storeDraft.address}
+                maxLength={300}
                 onChange={(event) =>
                   setStoreDraft({ ...storeDraft, address: event.target.value })
                 }
@@ -2190,6 +2149,7 @@ function OwnerPanel({
                 CEP
                 <input
                   value={storeDraft.zipCode}
+                  maxLength={9}
                   onChange={(event) =>
                     setStoreDraft({
                       ...storeDraft,
@@ -2203,6 +2163,7 @@ function OwnerPanel({
                 <input
                   required
                   value={storeDraft.phone}
+                  maxLength={20}
                   onChange={(event) =>
                     setStoreDraft({ ...storeDraft, phone: event.target.value })
                   }
@@ -2213,6 +2174,7 @@ function OwnerPanel({
               Horario
               <input
                 value={storeDraft.openingHours}
+                maxLength={200}
                 onChange={(event) =>
                   setStoreDraft({
                     ...storeDraft,
@@ -2227,7 +2189,7 @@ function OwnerPanel({
               ) : (
                 <ShieldCheck size={18} />
               )}
-              Enviar para aprovacao
+              Enviar para aprovação
             </button>
           </form>
         )}
@@ -2237,14 +2199,14 @@ function OwnerPanel({
             <ShieldCheck size={28} />
             <div>
               <p className="section-kicker">Analise obrigatoria</p>
-              <h3>Sebo aguardando aprovacao</h3>
+              <h3>Sebo aguardando aprovação</h3>
               <p>
-                A administracao precisa verificar o cadastro antes da publicacao
+                A administração precisa verificar o cadastro antes da publicação
                 de livros. Você receberá acesso ao formulário de livros após a
                 aprovação. Atualize a página para consultar o status.
               </p>
             </div>
-            <div className="owner-checklist" aria-label="Fluxo de verificacao">
+            <div className="owner-checklist" aria-label="Fluxo de verificação">
               <span>Cadastro enviado</span>
               <span>Analise admin</span>
               <span>Acervo liberado</span>
@@ -2256,7 +2218,7 @@ function OwnerPanel({
           <form id="book-editor" className="stack-form" onSubmit={handleBook}>
             <div className="store-status-strip" aria-label="Resumo do sebo">
               <span className={store.approved ? 'approved' : ''}>
-                {store.approved ? 'Aprovado' : 'Aguardando aprovacao'}
+                {store.approved ? 'Aprovado' : 'Aguardando aprovação'}
               </span>
               <span>
                 {store.city}, {store.state}
@@ -2289,10 +2251,11 @@ function OwnerPanel({
 
             <div className="form-row">
               <label>
-                Titulo
+                Título
                 <input
                   required
                   value={bookDraft.title}
+                  maxLength={300}
                   onChange={(event) =>
                     setBookDraft({ ...bookDraft, title: event.target.value })
                   }
@@ -2303,6 +2266,7 @@ function OwnerPanel({
                 <input
                   required
                   value={bookDraft.author}
+                  maxLength={200}
                   onChange={(event) =>
                     setBookDraft({ ...bookDraft, author: event.target.value })
                   }
@@ -2314,6 +2278,7 @@ function OwnerPanel({
                 ISBN
                 <input
                   value={bookDraft.isbn}
+                  maxLength={17}
                   onChange={(event) =>
                     setBookDraft({ ...bookDraft, isbn: event.target.value })
                   }
@@ -2325,6 +2290,7 @@ function OwnerPanel({
                   placeholder="Romance, Historia, Fantasia..."
                   list="book-categories"
                   value={bookDraft.category}
+                  maxLength={80}
                   onChange={(event) =>
                     setBookDraft({ ...bookDraft, category: event.target.value })
                   }
@@ -2354,6 +2320,7 @@ function OwnerPanel({
                 Editora
                 <input
                   value={bookDraft.publisher}
+                  maxLength={200}
                   onChange={(event) =>
                     setBookDraft({
                       ...bookDraft,
@@ -2384,6 +2351,7 @@ function OwnerPanel({
                 type="url"
                 placeholder="https://..."
                 value={bookDraft.coverUrl}
+                maxLength={2048}
                 onChange={(event) =>
                   setBookDraft({ ...bookDraft, coverUrl: event.target.value })
                 }
@@ -2394,6 +2362,7 @@ function OwnerPanel({
               <textarea
                 placeholder="Edicao, estado real do exemplar, marcas de uso, sinopse curta..."
                 value={bookDraft.summary}
+                maxLength={5000}
                 onChange={(event) =>
                   setBookDraft({ ...bookDraft, summary: event.target.value })
                 }
@@ -2419,7 +2388,7 @@ function OwnerPanel({
                 </select>
               </label>
               <label>
-                Preco
+                Preço
                 <input
                   required
                   type="number"
@@ -2482,8 +2451,8 @@ function OwnerPanel({
             <h3>Meu acervo</h3>
             <p>
               {store?.approved
-                ? 'Controle o que aparece no catalogo e ajuste estoque sem sair do site.'
-                : 'O acervo sera liberado depois que a administracao aprovar o sebo.'}
+                ? 'Controle o que aparece no catálogo e ajuste estoque sem sair do site.'
+                : 'O acervo será liberado depois que a administração aprovar o sebo.'}
             </p>
           </div>
         </div>
@@ -2530,7 +2499,7 @@ function OwnerPanel({
                 <BookOpen size={22} />
                 <span>
                   {myBooks.length === 0
-                    ? 'Cadastre o primeiro livro para preencher o catalogo.'
+                    ? 'Cadastre o primeiro livro para preencher o catálogo.'
                     : 'Nenhum livro encontrado nessa busca.'}
                 </span>
               </div>
@@ -2597,7 +2566,7 @@ function OwnerPanel({
         ) : (
           <>
             <p>
-              Depois de enviar o cadastro do sebo, esta area mostra livros
+              Depois de enviar o cadastro do sebo, esta área mostra livros
               cadastrados, estoque, capas e atalhos de edicao.
             </p>
             <div className="owner-checklist" aria-label="Funcoes do acervo">
@@ -2638,9 +2607,7 @@ function AdminPanel({
       setReviewStores(await loadAdminStores())
     } catch (error) {
       setMessage(
-        error instanceof Error
-          ? error.message
-          : 'Nao foi possivel carregar os sebos.',
+        friendlyErrorMessage(error, 'Não foi possível carregar os sebos.'),
       )
     } finally {
       setLoadingReview(false)
@@ -2684,13 +2651,11 @@ function AdminPanel({
       setMessage(
         approved
           ? 'Sebo aprovado e liberado para cadastrar livros.'
-          : 'Sebo voltou para analise.',
+          : 'Sebo voltou para análise.',
       )
     } catch (error) {
       setMessage(
-        error instanceof Error
-          ? error.message
-          : 'Nao foi possivel atualizar o sebo.',
+        friendlyErrorMessage(error, 'Não foi possível atualizar o sebo.'),
       )
     } finally {
       setSavingStoreId(null)
@@ -2703,18 +2668,18 @@ function AdminPanel({
         <AuthBox
           intent="customer"
           title="Entrar como administrador"
-          description="Acesse uma conta com permissao ADMIN para revisar cadastros de sebos antes da publicacao do acervo."
+          description="Acesse uma conta com permissão ADMIN para revisar cadastros de sebos antes da publicação do acervo."
           onAuthChange={onAuthChange}
         />
 
         <aside className="owner-note">
           <ShieldCheck size={24} />
-          <h3>Fluxo de verificacao</h3>
+          <h3>Fluxo de verificação</h3>
           <p>
-            O sebo envia cadastro, a administracao confere os dados e so depois
-            libera a criacao de livros no catalogo.
+            O sebo envia cadastro, a administração confere os dados e só depois
+            libera a criação de livros no catálogo.
           </p>
-          <div className="owner-checklist" aria-label="Etapas da analise">
+          <div className="owner-checklist" aria-label="Etapas da análise">
             <span>Pendente</span>
             <span>Aprovado</span>
             <span>Acervo liberado</span>
@@ -2784,7 +2749,7 @@ function AdminPanel({
       <section className="owner-card admin-review-card">
         <div className="section-heading compact">
           <div>
-            <p className="section-kicker">Administracao</p>
+            <p className="section-kicker">Administração</p>
             <h2>Analise de sebos</h2>
           </div>
           <div className="section-actions">
@@ -2922,7 +2887,7 @@ function AdminPanel({
                       ) : (
                         <X size={18} />
                       )}
-                      Voltar para analise
+                      Voltar para análise
                     </button>
                   )}
                 </div>
@@ -2944,7 +2909,7 @@ function AdminPanel({
         <div className="owner-checklist" aria-label="Protecoes do fluxo">
           <span>Endereço</span>
           <span>Contato</span>
-          <span>Aprovacao</span>
+          <span>Aprovação</span>
         </div>
       </aside>
     </div>

@@ -282,7 +282,28 @@ Buckets configurados:
 - `book-covers`: capas de livros.
 - `store-photos`: fotos dos sebos.
 
-Ambos aceitam JPEG, PNG e WebP, com limite de 5 MB. A leitura é pública e a alteração é restrita ao proprietário do arquivo. A interface atual aceita URL de capa; upload direto é uma evolução planejada.
+Ambos aceitam JPEG, PNG e WebP, com limite de 5 MB. A leitura é pública e a alteração é restrita ao proprietário do arquivo. Cada usuário só pode gravar dentro de uma pasta com o próprio id (`<bucket>/<id-do-usuário>/<arquivo>`), o que impede que um usuário sobrescreva ou ocupe o espaço de outro. A interface atual aceita URL de capa; upload direto é uma evolução planejada.
+
+### Restrições de integridade
+
+A migration `20261119120000_harden_data_constraints.sql` adiciona regras `CHECK` no banco. Elas valem mesmo para quem chama a API diretamente, sem passar pela interface:
+
+| Tabela | Regra |
+| --- | --- |
+| `books` | título de 1 a 300 caracteres, autor de 1 a 200, resumo até 5.000 |
+| `books` | ISBN com 10 ou 13 dígitos (hífens permitidos) |
+| `books` | ano entre 1400 e 2100, preço até R$ 100.000, quantidade até 10.000 |
+| `books` | URL da capa começando com `http://` ou `https://` |
+| `stores` | nome de 2 a 120 caracteres e slug em formato de URL |
+| `stores` | UF com duas letras maiúsculas, CEP com 8 dígitos |
+| `stores` | telefone com 10 a 13 dígitos, pois ele alimenta o botão do WhatsApp |
+| `profiles` | nome exibido de 1 a 80 caracteres |
+| `wishlists` | título de 1 a 300 caracteres, autor até 200 |
+| `reviews` | comentário até 1.000 caracteres |
+
+As mesmas regras são conferidas antes no navegador (`src/lib/validation.ts`), para mostrar uma mensagem clara sem precisar ir ao servidor. O banco continua sendo a proteção definitiva.
+
+As restrições foram criadas como `NOT VALID`: valem para todo cadastro ou edição nova, mas não impedem a migration caso existam registros antigos fora do padrão. A própria migration traz uma consulta para encontrar esses registros.
 
 ## 9. Segurança e RLS
 
@@ -300,6 +321,24 @@ Regras principais:
 - Apenas administradores aprovam ou devolvem sebos para análise.
 - O cliente gerencia somente a própria wishlist.
 - O cliente edita somente o próprio perfil.
+- O responsável por um sebo não pode avaliar o próprio sebo.
+- Textos, números, ISBN, UF, CEP e telefone são validados por `CHECK` no banco.
+- Uploads no Storage ficam restritos à pasta do próprio usuário.
+
+### Mensagens de erro
+
+Erros técnicos do Supabase (em inglês e com códigos como `23505` ou `42501`) são traduzidos por `src/lib/friendlyErrors.ts` em mensagens claras em português. Exemplos:
+
+| Situação | Mensagem exibida |
+| --- | --- |
+| Conta já possui sebo (`23505` em `owner_id`) | "Esta conta já possui um sebo cadastrado..." |
+| Bloqueio por RLS (`42501`) | "Você não tem permissão para esta ação..." |
+| Regra `CHECK` violada (`23514`) | "Algum campo está com um valor inválido..." |
+| Falha de rede | "Sem conexão com o servidor..." |
+
+### Sebos com o mesmo nome
+
+O `slug` do sebo é único. Antes, um segundo sebo com o mesmo nome de outro (por exemplo, "Sebo Central") não conseguia se cadastrar. Agora o sistema tenta o slug simples e, se ele já estiver em uso, gera automaticamente um slug com sufixo curto, como `sebo-central-k3x9`.
 
 O frontend usa somente uma chave pública `publishable`. Nunca devem ser colocados no navegador:
 
@@ -387,7 +426,10 @@ src/
   lib/
     catalog.ts               # operações com Auth e banco
     catalogFilters.ts        # busca, filtros, ordenação e WhatsApp
+    friendlyErrors.ts        # tradução de erros técnicos para português
+    slug.ts                  # geração de slug único para sebos
     supabase.ts              # criação do cliente Supabase
+    validation.ts            # validação de livros e sebos antes do envio
   types.ts                   # contratos TypeScript
 supabase/
   migrations/                # evolução versionada do banco
@@ -396,6 +438,8 @@ scripts/
   verify-panels.mjs          # teste dos painéis com API simulada
 tests/
   catalogFilters.test.mjs    # testes das regras de catálogo
+  friendlyErrors.test.mjs    # testes das mensagens de erro
+  validation.test.mjs        # testes de validação e slug
 docs/                        # documentação do projeto
 vercel.json                  # build e fallback de rotas
 ```
@@ -471,7 +515,13 @@ npm run test:panels
 - combinação de filtros;
 - preço máximo zero;
 - ordenação sem mutar o catálogo original;
-- normalização do número do WhatsApp.
+- normalização do número do WhatsApp;
+- tradução de erros do Auth, do Postgres (`23505`, `42501`, `23514`, `22P02`) e de rede;
+- geração de slug sem acentos e com sufixo quando o nome se repete;
+- validação de título, preço (inclusive com vírgula), quantidade, ano, ISBN e URL da capa;
+- validação de UF, CEP e telefone do sebo.
+
+São 15 testes no total, executados em menos de um segundo.
 
 ### Teste de interface
 
@@ -528,6 +578,15 @@ Configuração de `vercel.json`:
 - saída: `dist`;
 - instalação: `npm install`;
 - fallback de todas as rotas para `index.html`.
+
+### Migrations do banco
+
+A Vercel publica apenas o frontend. Uma migration nova precisa ser aplicada no Supabase separadamente, por uma destas opções:
+
+- Supabase CLI: `npx supabase db push` (com o projeto vinculado);
+- Dashboard: `SQL Editor`, colar o conteúdo do arquivo da migration e executar.
+
+Ordem recomendada: aplicar a migration primeiro e depois publicar o frontend. Antes de aplicar `20261119120000_harden_data_constraints.sql`, rode a consulta de conferência que está no comentário do arquivo para encontrar sebos antigos com telefone ou CEP fora do padrão.
 
 ## 15. Fluxos completos
 
@@ -630,9 +689,21 @@ Sim, em modo demonstrativo com catálogo local. Operações de autenticação e 
 
 Para o escopo do MVP, as operações são protegidas por sessão e RLS. A chave secreta não é enviada ao navegador. Ainda assim, produção real exigiria auditorias, monitoramento, políticas de retenção, LGPD e testes adicionais.
 
+### Como os dados são validados?
+
+Em duas camadas. O navegador confere os campos antes do envio e mostra uma mensagem clara. O banco repete as regras com restrições `CHECK`, que também protegem contra chamadas diretas à API. A interface é a camada de conveniência e o banco é a proteção definitiva.
+
+### O que acontece se dois sebos tiverem o mesmo nome?
+
+Os dois podem se cadastrar. O nome pode se repetir, mas o `slug` é único: se o slug simples já estiver em uso, o sistema gera outro com um sufixo curto.
+
+### Por que as mensagens de erro aparecem em português?
+
+O Supabase devolve erros técnicos em inglês com códigos do Postgres. O módulo `friendlyErrors.ts` reconhece esses códigos e mostra uma explicação que o usuário entende, sem expor detalhes internos.
+
 ### Como foi testado?
 
-Foram usados testes unitários para busca e filtros, Playwright para interface e testes interceptados para os painéis sem modificar a produção.
+Foram usados testes unitários para busca, filtros, validações e mensagens de erro, Playwright para a interface e testes interceptados para os painéis, sem modificar a produção.
 
 ## 18. Limitações atuais
 
@@ -657,6 +728,8 @@ Foram usados testes unitários para busca e filtros, Playwright para interface e
 - Dashboard de vendas e acervo.
 - Histórico de aprovação com observação do administrador.
 - Testes automatizados reais das policies com usuários de cada papel.
+- Dividir `App.tsx` (cerca de 2.900 linhas) em um arquivo por tela (`AuthBox`, `ClientPanel`, `OwnerPanel`, `AdminPanel`) para facilitar manutenção.
+- Permitir que o responsável edite telefone e horário depois da aprovação (hoje a policy só permite edição enquanto o sebo está pendente).
 - Backend Node.js para jobs e integrações privadas.
 - Adequação completa à LGPD e termos de uso.
 
