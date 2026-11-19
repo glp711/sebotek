@@ -17,6 +17,7 @@ import {
   Edit3,
   Eye,
   EyeOff,
+  Gift,
   LogOut,
   ListFilter,
   Heart,
@@ -42,8 +43,13 @@ import {
 } from 'lucide-react'
 import './App.css'
 import './original-theme.css'
+import './features.css'
+import { AdminMessages } from './components/AdminMessages'
 import { CatalogBrowser } from './components/CatalogBrowser'
 import { BookCover } from './components/BookCover'
+import { ContactView } from './components/ContactView'
+import { DonationView } from './components/DonationView'
+import { StoreDonations } from './components/StoreDonations'
 import { normalizeSearch, whatsappUrl } from './lib/catalogFilters'
 import { friendlyErrorMessage } from './lib/friendlyErrors'
 import {
@@ -127,22 +133,33 @@ const getWhatsappUrl = (book: BookRecord) =>
       )
     : undefined
 
-type AppView = 'catalog' | 'stores' | 'client' | 'owner' | 'admin'
+type AppView =
+  | 'catalog'
+  | 'stores'
+  | 'donate'
+  | 'client'
+  | 'owner'
+  | 'admin'
+  | 'contact'
 type AuthRoute = 'confirm' | 'reset-password' | 'oauth' | null
 
 const viewPaths: Record<AppView, string> = {
   catalog: '/catalogo',
   stores: '/sebos',
+  donate: '/doar',
   client: '/conta',
   owner: '/meu-sebo',
   admin: '/admin',
+  contact: '/contato',
 }
 const viewNames: Record<AppView, string> = {
   catalog: 'Catálogo',
   stores: 'Sebos parceiros',
+  donate: 'Doar livros',
   client: 'Minha conta',
   owner: 'Meu sebo',
   admin: 'Administração',
+  contact: 'Contato',
 }
 function currentView(): AppView {
   return (
@@ -363,6 +380,7 @@ function App() {
   const navItems: { view: AppView; icon: typeof BookOpen }[] = [
     { view: 'catalog', icon: BookOpen },
     { view: 'stores', icon: Store },
+    { view: 'donate', icon: Gift },
     { view: 'client', icon: User },
     { view: 'owner', icon: Building2 },
     ...(profile?.role === 'ADMIN'
@@ -611,9 +629,20 @@ function App() {
                 onOpenStoreCatalog={(storeId) =>
                   showView('catalog', '', storeId)
                 }
+                onDonateToStore={(storeId) => showView('donate', '', storeId)}
               />
             ))}
-          {['client', 'owner', 'admin'].includes(activeView) &&
+          {activeView === 'contact' && (
+            <ContactView
+              key={session?.user.id ?? 'anon'}
+              defaultName={profile?.displayName ?? ''}
+              defaultEmail={session?.user.email ?? ''}
+              onOpenStores={() => showView('stores')}
+              onOpenDonate={() => showView('donate')}
+              onOpenOwner={() => showView('owner')}
+            />
+          )}
+          {['client', 'owner', 'admin', 'donate'].includes(activeView) &&
           identityLoading ? (
             <div className="empty-state" role="status">
               <Loader2 size={24} className="spin" />
@@ -644,10 +673,51 @@ function App() {
                   onCatalogChange={() => void refreshCatalog()}
                 />
               )}
+              {activeView === 'donate' && (
+                <DonationView
+                  key={`${storeFilter}-${profile?.displayName ?? ''}`}
+                  session={session}
+                  stores={stores}
+                  initialStoreId={storeFilter}
+                  defaultName={profile?.displayName ?? ''}
+                  authBox={
+                    <AuthBox
+                      intent="customer"
+                      title="Entre para doar livros"
+                      description="Use sua conta de leitor para oferecer livros a um sebo e acompanhar a resposta."
+                      onAuthChange={refreshSession}
+                    />
+                  }
+                />
+              )}
             </>
           )}
         </section>
       </main>
+      <footer className="app-footer">
+        <div>
+          <strong>
+            Sebo <span>Virtual</span>
+          </strong>
+          <small>Conectando leitores a sebos independentes.</small>
+        </div>
+        <nav aria-label="Links do rodapé">
+          {(['stores', 'donate', 'contact'] as AppView[]).map((view) => (
+            <a
+              key={view}
+              href={viewPaths[view]}
+              onClick={(event) => {
+                if (!event.ctrlKey && !event.metaKey) {
+                  event.preventDefault()
+                  showView(view)
+                }
+              }}
+            >
+              {viewNames[view]}
+            </a>
+          ))}
+        </nav>
+      </footer>
       {selectedBook && (
         <BookDetailDialog
           book={selectedBook}
@@ -1060,10 +1130,12 @@ function StoresView({
   books,
   stores,
   onOpenStoreCatalog,
+  onDonateToStore,
 }: {
   books: BookRecord[]
   stores: StoreRecord[]
-  onOpenStoreCatalog: (storeName: string) => void
+  onOpenStoreCatalog: (storeId: string) => void
+  onDonateToStore: (storeId: string) => void
 }) {
   const storeStats = useMemo(() => {
     const stats = new Map<
@@ -1122,7 +1194,7 @@ function StoresView({
               <div className="store-stats">
                 <span>
                   <strong>{stats?.books ?? 0}</strong>
-                  titulos
+                  títulos
                 </span>
                 <span>
                   <strong>{stats?.units ?? 0}</strong>
@@ -1134,7 +1206,7 @@ function StoresView({
                       ? formatCurrency(stats.lowestPrice)
                       : '-'}
                   </strong>
-                  menor preco
+                  menor preço
                 </span>
               </div>
 
@@ -1149,13 +1221,25 @@ function StoresView({
                 <span>{store.phone}</span>
               </div>
               {store.openingHours && <small>{store.openingHours}</small>}
-              <button
-                className="secondary-action store-action"
-                type="button"
-                onClick={() => onOpenStoreCatalog(store.id)}
-              >
-                Ver acervo
-              </button>
+              <div className="store-card-actions">
+                <button
+                  className="secondary-action store-action"
+                  type="button"
+                  onClick={() => onOpenStoreCatalog(store.id)}
+                >
+                  Ver acervo
+                </button>
+                {store.approved && (
+                  <button
+                    className="text-button store-donate"
+                    type="button"
+                    onClick={() => onDonateToStore(store.id)}
+                  >
+                    <Gift size={15} />
+                    Doar livros
+                  </button>
+                )}
+              </div>
             </article>
           )
         })}
@@ -2097,7 +2181,7 @@ function OwnerPanel({
               />
             </label>
             <label>
-              Descricao
+              Descrição
               <textarea
                 value={storeDraft.description}
                 maxLength={2000}
@@ -2171,7 +2255,7 @@ function OwnerPanel({
               </label>
             </div>
             <label>
-              Horario
+              Horário
               <input
                 value={storeDraft.openingHours}
                 maxLength={200}
@@ -2198,7 +2282,7 @@ function OwnerPanel({
           <div className="verification-card">
             <ShieldCheck size={28} />
             <div>
-              <p className="section-kicker">Analise obrigatoria</p>
+              <p className="section-kicker">Análise obrigatória</p>
               <h3>Sebo aguardando aprovação</h3>
               <p>
                 A administração precisa verificar o cadastro antes da publicação
@@ -2223,7 +2307,7 @@ function OwnerPanel({
               <span>
                 {store.city}, {store.state}
               </span>
-              <span>{inventoryStats.totalTitles} titulos</span>
+              <span>{inventoryStats.totalTitles} títulos</span>
             </div>
 
             <div className="section-heading mini">
@@ -2287,7 +2371,7 @@ function OwnerPanel({
               <label>
                 Categoria
                 <input
-                  placeholder="Romance, Historia, Fantasia..."
+                  placeholder="Romance, História, Fantasia..."
                   list="book-categories"
                   value={bookDraft.category}
                   maxLength={80}
@@ -2358,9 +2442,9 @@ function OwnerPanel({
               />
             </label>
             <label>
-              Resumo ou observacoes
+              Resumo ou observações
               <textarea
-                placeholder="Edicao, estado real do exemplar, marcas de uso, sinopse curta..."
+                placeholder="Edição, estado real do exemplar, marcas de uso, sinopse curta..."
                 value={bookDraft.summary}
                 maxLength={5000}
                 onChange={(event) =>
@@ -2426,7 +2510,7 @@ function OwnerPanel({
                 ) : (
                   <Plus size={18} />
                 )}
-                {editingBookId ? 'Salvar alteracoes' : 'Cadastrar livro'}
+                {editingBookId ? 'Salvar alterações' : 'Cadastrar livro'}
               </button>
               {editingBookId && (
                 <button
@@ -2435,7 +2519,7 @@ function OwnerPanel({
                   onClick={resetBookForm}
                 >
                   <RefreshCw size={18} />
-                  Cancelar edicao
+                  Cancelar edição
                 </button>
               )}
             </div>
@@ -2567,9 +2651,9 @@ function OwnerPanel({
           <>
             <p>
               Depois de enviar o cadastro do sebo, esta área mostra livros
-              cadastrados, estoque, capas e atalhos de edicao.
+              cadastrados, estoque, capas e atalhos de edição.
             </p>
-            <div className="owner-checklist" aria-label="Funcoes do acervo">
+            <div className="owner-checklist" aria-label="Funções do acervo">
               <span>Criar livros</span>
               <span>Editar dados</span>
               <span>Remover itens</span>
@@ -2577,6 +2661,9 @@ function OwnerPanel({
           </>
         )}
       </aside>
+      {store?.approved && (
+        <StoreDonations storeId={store.id} storeName={store.name} />
+      )}
     </div>
   )
 }
@@ -2750,7 +2837,7 @@ function AdminPanel({
         <div className="section-heading compact">
           <div>
             <p className="section-kicker">Administração</p>
-            <h2>Analise de sebos</h2>
+            <h2>Análise de sebos</h2>
           </div>
           <div className="section-actions">
             <button
@@ -2906,12 +2993,13 @@ function AdminPanel({
           Confira nome, endereço e contato antes de aprovar um sebo. Ao retornar
           um sebo para análise, a publicação de novos livros fica bloqueada.
         </p>
-        <div className="owner-checklist" aria-label="Protecoes do fluxo">
+        <div className="owner-checklist" aria-label="Proteções do fluxo">
           <span>Endereço</span>
           <span>Contato</span>
           <span>Aprovação</span>
         </div>
       </aside>
+      <AdminMessages />
     </div>
   )
 }

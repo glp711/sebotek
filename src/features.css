@@ -1,0 +1,327 @@
+/* Doações, contato, mensagens do admin e rodapé. Usa os tokens do tema original. */
+
+.donations-card,
+.admin-messages-card {
+  grid-column: 1 / -1;
+}
+
+.donation-steps {
+  margin: 0;
+  padding-left: 20px;
+  display: grid;
+  gap: 8px;
+  color: var(--color-muted);
+  line-height: 1.5;
+}
+
+.donation-list {
+  display: grid;
+  gap: 12px;
+}
+
+.donation-item {
+  display: grid;
+  gap: 8px;
+  padding: 14px 16px;
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  background: rgba(247, 245, 238, 0.03);
+  min-width: 0;
+}
+
+.donation-item p {
+  margin: 0;
+  color: var(--color-paper);
+  line-height: 1.55;
+  white-space: pre-line;
+  overflow-wrap: anywhere;
+}
+
+.donation-item small {
+  color: var(--color-subtle);
+  overflow-wrap: anywhere;
+}
+
+.donation-item blockquote {
+  margin: 0;
+  padding: 8px 12px;
+  border-left: 3px solid var(--color-cyan);
+  color: var(--color-muted);
+  background: rgba(112, 214, 255, 0.06);
+  border-radius: 0 6px 6px 0;
+  overflow-wrap: anywhere;
+}
+
+.donation-item-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.donation-item-head strong {
+  color: var(--color-paper);
+  overflow-wrap: anywhere;
+}
+
+.donation-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+}
+
+.donation-actions .primary-action,
+.donation-actions .secondary-action {
+  min-height: 38px;
+  text-decoration: none;
+}
+
+.donation-actions .text-button,
+.store-donate {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.donation-response {
+  display: grid;
+  gap: 6px;
+  color: var(--color-muted);
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.donation-response textarea {
+  width: 100%;
+  min-height: 64px;
+  padding: 10px 12px;
+  border: 1px solid var(--color-border);
+  border-radius: 7px;
+  color: var(--color-paper);
+  background: var(--color-bg-soft);
+  font: inherit;
+  font-weight: 400;
+  resize: vertical;
+}
+
+.status-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 3px 9px;
+  border: 1px solid currentColor;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.03em;
+  white-space: nowrap;
+}
+
+.status-pending {
+  color: var(--color-warning);
+}
+
+.status-accepted {
+  color: var(--color-cyan);
+}
+
+.status-received {
+  color: var(--color-primary);
+}
+
+.status-declined,
+.status-cancelled {
+  color: var(--color-subtle);
+}
+
+.count-badge {
+  display: inline-flex;
+  vertical-align: middle;
+  margin-left: 8px;
+  padding: 2px 8px;
+  border-radius: 999px;
+  color: var(--color-bg);
+  background: var(--color-primary);
+  font-size: 12px;
+  font-family: inherit;
+}
+
+.field-hint {
+  margin: 0;
+  color: var(--color-subtle);
+  font-size: 12px;
+}
+
+.store-card-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+  margin-top: auto;
+}
+
+.store-donate {
+  color: var(--color-primary);
+}
+
+/* Contato */
+.contact-success {
+  display: grid;
+  justify-items: start;
+  gap: 10px;
+  color: var(--color-muted);
+}
+
+.contact-success svg {
+  color: var(--color-primary);
+}
+
+.contact-success h3 {
+  margin: 0;
+  color: var(--color-paper);
+}
+
+.contact-success p {
+  margin: 0;
+  line-height: 1.6;
+}
+
+.contact-shortcuts {
+  display: grid;
+  gap: 10px;
+}
+
+.contact-shortcut {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 10px;
+  align-items: start;
+  width: 100%;
+  padding: 12px;
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  color: var(--color-muted);
+  background: rgba(15, 15, 15, 0.35);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition: border-color 160ms ease, background 160ms ease;
+}
+
+.contact-shortcut:hover {
+  border-color: rgba(200, 255, 0, 0.45);
+  background: rgba(200, 255, 0, 0.05);
+}
+
+.contact-shortcut span {
+  display: grid;
+  gap: 3px;
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+.contact-shortcut strong {
+  color: var(--color-paper);
+}
+
+.visually-hidden {
+  position: absolute !important;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+/* Rodapé */
+.app-footer {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  margin-top: 40px;
+  padding: 24px 0 96px;
+  border-top: 1px solid var(--color-border);
+  color: var(--color-subtle);
+  font-size: 13px;
+}
+
+.app-footer > div {
+  display: grid;
+  gap: 4px;
+}
+
+.app-footer strong {
+  color: var(--color-paper);
+  font-size: 18px;
+}
+
+.app-footer strong span {
+  color: var(--color-primary);
+}
+
+.app-footer nav {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 18px;
+}
+
+.app-footer a {
+  color: var(--color-muted);
+  font-weight: 700;
+  text-decoration: none;
+}
+
+.app-footer a:hover,
+.app-footer a:focus-visible {
+  color: var(--color-primary);
+}
+
+/* O menu ganhou o item Doar livros: quebra em linhas antes de estourar a largura. */
+@media (max-width: 1180px) {
+  .topbar {
+    flex-wrap: wrap;
+    padding: 12px 0;
+  }
+
+  .nav-actions {
+    flex-wrap: wrap;
+  }
+}
+
+@media (max-width: 980px) {
+  .topbar {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .nav-actions {
+    width: 100%;
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(118px, 1fr));
+  }
+}
+
+@media (max-width: 720px) {
+  .donation-actions > * {
+    flex: 1 1 100%;
+    justify-content: center;
+  }
+
+  .app-footer {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+}
+
+/* Mensagens de status com contraste legível no tema escuro (antes: texto claro sobre fundo creme). */
+.form-message {
+  border-left-color: var(--color-warning);
+  background: rgba(255, 206, 115, 0.08);
+  color: var(--color-warning);
+}

@@ -94,3 +94,61 @@ export type BookDraft = {
   price: string
   quantity: string
 }
+
+export type DonationStatus =
+  | 'PENDING'
+  | 'ACCEPTED'
+  | 'DECLINED'
+  | 'RECEIVED'
+  | 'CANCELLED'
+
+export type DonationDelivery = 'DROP_OFF' | 'PICKUP'
+
+export type DonationRecord = {
+  id: string
+  donorId: string
+  storeId: string
+  storeName?: string | null
+  storePhone?: string | null
+  donorName: string
+  contactPhone: string
+  booksDescription: string
+  estimatedQuantity: number
+  deliveryMethod: DonationDelivery
+  pickupArea?: string | null
+  message?: string | null
+  status: DonationStatus
+  storeResponse?: string | null
+  respondedAt?: string | null
+  createdAt?: string
+}
+
+export type DonationDraft = {
+  storeId: string
+  donorName: string
+  contactPhone: string
+  booksDescription: string
+  estimatedQuantity: string
+  deliveryMethod: DonationDelivery
+  pickupArea: string
+  message: string
+}
+
+export type ContactTopic = 'DUVIDA' | 'SEBO' | 'DOACAO' | 'PROBLEMA' | 'SUGESTAO'
+
+export type ContactDraft = {
+  name: string
+  email: string
+  topic: ContactTopic
+  message: string
+}
+
+export type ContactMessageRecord = {
+  id: string
+  name: string
+  email: string
+  topic: ContactTopic
+  message: string
+  resolved: boolean
+  createdAt?: string
+}

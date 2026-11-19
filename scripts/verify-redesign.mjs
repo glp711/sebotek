@@ -76,7 +76,7 @@ try {
   assert.equal(await page.getByLabel('Buscar livros').inputValue(), 'marina')
   console.log('Search and reload passed')
   await page
-    .getByRole('navigation')
+    .getByLabel('Navegação principal')
     .getByRole('link', { name: /Lista de desejos/ })
     .click()
   await page.locator('#wishlist-panel').waitFor()
@@ -92,7 +92,7 @@ try {
   )
   console.log('Wishlist shortcut passed')
   await page
-    .getByRole('navigation')
+    .getByLabel('Navegação principal')
     .getByRole('link', { name: 'Minha conta' })
     .click()
   await page
@@ -154,7 +154,7 @@ try {
   })
   console.log('Account validation and confirmation code passed')
   await page
-    .getByRole('navigation')
+    .getByLabel('Navegação principal')
     .getByRole('link', { name: 'Meu sebo' })
     .click()
   assert.ok(page.url().endsWith('/meu-sebo'))
@@ -163,7 +163,7 @@ try {
   await page.goBack()
   assert.ok(page.url().endsWith('/conta'))
   await page
-    .getByRole('navigation')
+    .getByLabel('Navegação principal')
     .getByRole('link', { name: 'Sebos parceiros' })
     .click()
   await page.locator('.store-card').first().waitFor()
@@ -174,7 +174,7 @@ try {
   assert.ok(page.url().includes('sebo='))
   assert.ok((await page.locator('.book-card').count()) > 0)
   await page
-    .getByRole('navigation')
+    .getByLabel('Navegação principal')
     .getByRole('link', { name: 'Catálogo' })
     .click()
   await page.locator('.favorite-button').first().click()
@@ -207,7 +207,7 @@ try {
       fullPage: true,
     })
     await page
-      .getByRole('navigation')
+      .getByLabel('Navegação principal')
       .getByRole('link', { name: 'Minha conta' })
       .click()
     await page.getByRole('button', { name: 'Cadastrar', exact: true }).waitFor()

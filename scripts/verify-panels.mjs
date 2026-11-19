@@ -35,6 +35,25 @@ const store = {
 const books = []
 const wishes = []
 const writes = []
+const donations = [
+  {
+    id: 'donation-test',
+    donor_id: '33333333-3333-4333-8333-333333333333',
+    store_id: store.id,
+    donor_name: 'Doadora de teste',
+    contact_phone: '21988887777',
+    books_description: '12 romances em bom estado',
+    estimated_quantity: 12,
+    delivery_method: 'DROP_OFF',
+    pickup_area: null,
+    message: 'Posso levar no sábado.',
+    status: 'PENDING',
+    store_response: null,
+    created_at: '2026-11-18T12:00:00Z',
+    stores: { name: store.name, phone: store.phone },
+  },
+]
+const contactMessages = []
 const context = await browser.newContext({
   viewport: { width: 1365, height: 960 },
 })
@@ -87,6 +106,28 @@ await context.route(
       if (table === 'books' && method === 'DELETE') books.splice(0)
       if (table === 'wishlists' && method === 'POST')
         wishes.push({ id: 'wish-test', ...payload, notified: false })
+      if (table === 'donations' && method === 'PATCH') {
+        const id = url.searchParams.get('id')?.replace('eq.', '')
+        Object.assign(donations.find((item) => item.id === id) ?? {}, payload)
+      }
+      if (table === 'donations' && method === 'POST')
+        donations.push({
+          id: 'donation-new',
+          donor_id: userId,
+          status: 'PENDING',
+          created_at: '2026-11-19T12:00:00Z',
+          ...payload,
+          stores: { name: store.name, phone: store.phone },
+        })
+      if (table === 'contact_messages' && method === 'POST')
+        contactMessages.push({
+          id: 'message-test',
+          resolved: false,
+          created_at: '2026-11-19T12:00:00Z',
+          ...payload,
+        })
+      if (table === 'contact_messages' && method === 'PATCH')
+        Object.assign(contactMessages[0] ?? {}, payload)
       return route.fulfill({ status: 204 })
     }
     let data = []
@@ -103,6 +144,11 @@ await context.route(
           ? []
           : books.map((book) => ({ ...book, stores: { ...store } }))
     if (table === 'wishlists') data = wishes
+    if (table === 'donations')
+      data = url.searchParams.get('donor_id')
+        ? donations.filter((item) => item.donor_id === userId)
+        : donations.filter((item) => item.donor_id !== userId)
+    if (table === 'contact_messages') data = contactMessages
     return route.fulfill({ json: data })
   },
 )
@@ -147,7 +193,7 @@ try {
   await page.getByRole('button', { name: 'Editar livro', exact: true }).click()
   await editor.getByLabel('Preço', { exact: true }).fill('19.90')
   await editor
-    .getByRole('button', { name: 'Salvar alteracoes', exact: true })
+    .getByRole('button', { name: 'Salvar alterações', exact: true })
     .click()
   await page.getByText('Livro atualizado no acervo.').waitFor()
   assert.equal(books[0].price, 19.9)
@@ -156,7 +202,7 @@ try {
     fullPage: true,
   })
   await page
-    .getByRole('navigation')
+    .getByLabel('Navegação principal')
     .getByRole('link', { name: 'Catálogo' })
     .click()
   await page.locator('.favorite-button').first().click()
@@ -165,14 +211,14 @@ try {
     .waitFor()
   assert.equal(wishes.length, 1)
   await page
-    .getByRole('navigation')
+    .getByLabel('Navegação principal')
     .getByRole('link', { name: 'Minha conta' })
     .click()
   await page.locator('.wishlist-item').waitFor()
   assert.equal(await page.locator('.wishlist-item').count(), 1)
   await page.setViewportSize({ width: 390, height: 844 })
   await page
-    .getByRole('navigation')
+    .getByLabel('Navegação principal')
     .getByRole('link', { name: 'Meu sebo' })
     .click()
   await page.locator('#book-editor').waitFor()
@@ -190,6 +236,74 @@ try {
   await page.getByRole('button', { name: 'Remover livro', exact: true }).click()
   await page.getByText('Livro removido do acervo.').waitFor()
   assert.equal(books.length, 0)
+
+  // Doações recebidas pelo sebo
+  await page.setViewportSize({ width: 1365, height: 960 })
+  const received = page.locator('#store-donations')
+  await received.getByText('12 romances em bom estado').waitFor()
+  await received
+    .getByLabel('Resposta para o doador (opcional)')
+    .fill('Pode trazer no sábado de manhã.')
+  await received.getByRole('button', { name: 'Aceitar doação', exact: true }).click()
+  await page.getByText('Doação de Doadora de teste aceita.', { exact: false }).waitFor()
+  assert.equal(donations[0].status, 'ACCEPTED')
+  assert.equal(donations[0].store_response, 'Pode trazer no sábado de manhã.')
+  await received.getByRole('button', { name: 'Marcar como recebida', exact: true }).click()
+  await page.getByText('Doação marcada como recebida.', { exact: false }).waitFor()
+  assert.equal(donations[0].status, 'RECEIVED')
+  await page.screenshot({ path: path.join(output, 'store-donations.png'), fullPage: true })
+
+  // Leitor oferece uma doação a partir de Sebos parceiros
+  await page.getByLabel('Navegação principal').getByRole('link', { name: 'Sebos parceiros' }).click()
+  await page.getByRole('button', { name: 'Doar livros', exact: true }).first().click()
+  const donationForm = page.locator('#donation-form')
+  await donationForm.waitFor()
+  assert.equal(await donationForm.getByLabel('Sebo que vai receber').inputValue(), store.id)
+  await donationForm.getByLabel('Livros para doar').fill('Coleção de clássicos brasileiros')
+  await donationForm.getByLabel('Quantidade aproximada').fill('8')
+  await donationForm.getByLabel('Entrega').selectOption('PICKUP')
+  await donationForm.getByLabel('Bairro e cidade para retirada').fill('Tijuca, Rio de Janeiro')
+  await donationForm.getByLabel('WhatsApp para contato').fill('(21) 97777-6666')
+  await donationForm.getByRole('button', { name: 'Enviar oferta de doação' }).click()
+  await page.getByText('Doação enviada para Sebo de teste.', { exact: false }).waitFor()
+  const created = donations.find((item) => item.id === 'donation-new')
+  assert.equal(created?.delivery_method, 'PICKUP')
+  assert.equal(created?.pickup_area, 'Tijuca, Rio de Janeiro')
+  await page.locator('#my-donations').getByText('Coleção de clássicos brasileiros').waitFor()
+  await page.getByRole('button', { name: 'Cancelar oferta' }).click()
+  await page.getByText('Doação cancelada.').waitFor()
+  assert.equal(created?.status, 'CANCELLED')
+  await page.screenshot({ path: path.join(output, 'donate.png'), fullPage: true })
+
+  // Formulário de contato
+  await page.getByRole('contentinfo').getByRole('link', { name: 'Contato' }).click()
+  await page.getByLabel('Nome', { exact: true }).fill('Pessoa de teste')
+  await page.getByLabel('Assunto').selectOption('SUGESTAO')
+  await page
+    .getByLabel('Mensagem', { exact: true })
+    .fill('Seria ótimo ter avaliações dos sebos.')
+  await page.getByRole('button', { name: 'Enviar mensagem' }).click()
+  await page.getByRole('heading', { name: 'Mensagem enviada' }).waitFor()
+  assert.equal(contactMessages.length, 1)
+  assert.equal(contactMessages[0].email, user.email)
+  assert.equal(contactMessages[0].topic, 'SUGESTAO')
+
+  // Administração lê e resolve a mensagem
+  role = 'ADMIN'
+  await page.goto(base + '/admin', { waitUntil: 'domcontentloaded' })
+  const inbox = page.locator('#admin-messages')
+  await inbox.getByText('Seria ótimo ter avaliações dos sebos.').waitFor()
+  await inbox.getByRole('button', { name: 'Marcar como resolvida' }).click()
+  await inbox.getByText('Nenhuma mensagem em aberto.').waitFor()
+  assert.equal(contactMessages[0].resolved, true)
+  await page.setViewportSize({ width: 390, height: 844 })
+  await page.goto(base + '/doar', { waitUntil: 'domcontentloaded' })
+  await page.locator('#donation-form').waitFor()
+  assert.ok(
+    await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth),
+    'Donation page fits mobile',
+  )
+  await page.screenshot({ path: path.join(output, 'donate-mobile.png'), fullPage: true })
   assert.deepEqual(errors, [])
   console.log(
     JSON.stringify(
@@ -202,6 +316,11 @@ try {
           'create/edit/delete book',
           'wishlist persisted',
           'mobile store panel',
+          'store accepts and receives donation',
+          'reader offers and cancels donation',
+          'contact form',
+          'admin resolves contact message',
+          'mobile donation page',
         ],
         writes,
         screenshots: output,
