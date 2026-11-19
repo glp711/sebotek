@@ -9,7 +9,9 @@ import type {
   StoreRecord,
   WishlistRecord,
 } from '../types'
+import { isSlugConflict, slugify, slugWithSuffix } from './slug'
 import { isSupabaseConfigured, supabase } from './supabase'
+import { LIMITS, validateBookDraft, validateStoreDraft } from './validation'
 
 const publicStoreColumns =
   'id,name,slug,description,address,city,state,zip_code,phone,opening_hours,photo_url,latitude,longitude,approved,created_at,updated_at'
@@ -100,7 +102,10 @@ const cleanString = (value: string) => {
   return trimmed ? trimmed : null
 }
 
-const bookDraftToRow = (draft: BookDraft) => ({
+const bookDraftToRow = (draft: BookDraft) => {
+  const invalid = validateBookDraft(draft)
+  if (invalid) throw new Error(invalid)
+  return {
   title: draft.title.trim(),
   author: draft.author.trim(),
   isbn: cleanString(draft.isbn),
@@ -109,10 +114,11 @@ const bookDraftToRow = (draft: BookDraft) => ({
   publisher: cleanString(draft.publisher),
   published_year: draft.publishedYear ? Number(draft.publishedYear) : null,
   condition: draft.condition,
-  price: Number(draft.price),
+  price: Number(draft.price.replace(',', '.')),
   quantity: Number(draft.quantity || 0),
   cover_url: cleanString(draft.coverUrl),
-})
+  }
+}
 
 const productionOrigin = 'https://sebo-virtual.vercel.app'
 export const oauthIntentStorageKey = 'sebo-virtual:oauth-intent'
@@ -368,9 +374,14 @@ export async function updateMyProfile(displayName: string) {
   } = await supabase.auth.getUser()
   if (!user) throw new Error('Entre na sua conta para editar o perfil.')
 
+  const name = displayName.trim()
+  if (!name) throw new Error('Informe o nome que será exibido.')
+  if (name.length > LIMITS.displayName)
+    throw new Error(`O nome pode ter no máximo ${LIMITS.displayName} caracteres.`)
+
   const { error } = await supabase
     .from('profiles')
-    .update({ display_name: displayName })
+    .update({ display_name: name })
     .eq('id', user.id)
 
   if (error) throw error
@@ -425,28 +436,31 @@ export async function createStoreRequest(draft: StoreDraft) {
   } = await supabase.auth.getUser()
   if (!user) throw new Error('Entre na sua conta para cadastrar um sebo.')
 
-  const slug = draft.name
-    .normalize('NFD')
-    .replace(/[\u0300-\u036f]/g, '')
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, '-')
-    .replace(/^-|-$/g, '')
+  const invalid = validateStoreDraft(draft)
+  if (invalid) throw new Error(invalid)
 
-  const { error } = await supabase.from('stores').insert({
+  const name = draft.name.trim()
+  const row = {
     owner_id: user.id,
-    name: draft.name,
-    slug,
-    description: draft.description,
-    address: draft.address,
-    city: draft.city,
-    state: draft.state,
-    zip_code: draft.zipCode,
-    phone: draft.phone,
-    opening_hours: draft.openingHours,
+    name,
+    description: cleanString(draft.description),
+    address: draft.address.trim(),
+    city: draft.city.trim(),
+    state: draft.state.trim().toUpperCase(),
+    zip_code: cleanString(draft.zipCode),
+    phone: draft.phone.trim(),
+    opening_hours: cleanString(draft.openingHours),
     approved: false,
-  })
+  }
 
-  if (error) throw error
+  // Dois sebos podem ter o mesmo nome; o slug precisa ser \u00fanico.
+  // Tenta o slug simples e, se j\u00e1 estiver em uso, gera um com sufixo.
+  const candidates = [slugify(name), slugWithSuffix(name), slugWithSuffix(name)]
+  for (const [attempt, slug] of candidates.entries()) {
+    const { error } = await supabase.from('stores').insert({ ...row, slug })
+    if (!error) return
+    if (!isSlugConflict(error) || attempt === candidates.length - 1) throw error
+  }
 }
 
 export async function createBook(storeId: string, draft: BookDraft) {
@@ -463,7 +477,7 @@ export async function createBook(storeId: string, draft: BookDraft) {
   if (storeError) throw storeError
   if (!storeData?.approved) {
     throw new Error(
-      'Seu sebo precisa ser aprovado pela administracao antes de cadastrar livros.',
+      'Seu sebo precisa ser aprovado pela administração antes de cadastrar livros.',
     )
   }
 
@@ -533,10 +547,15 @@ export async function createWishlistItem(title: string, author: string) {
   } = await supabase.auth.getUser()
   if (!user) throw new Error('Entre na sua conta para salvar uma busca.')
 
+  const cleanTitle = title.trim()
+  if (!cleanTitle) throw new Error('Informe o título do livro desejado.')
+  if (cleanTitle.length > LIMITS.wishlistTitle || author.trim().length > LIMITS.wishlistAuthor)
+    throw new Error('O título ou o autor do desejo está longo demais.')
+
   const { error } = await supabase.from('wishlists').insert({
     user_id: user.id,
-    title,
-    author: author || null,
+    title: cleanTitle,
+    author: cleanString(author),
   })
 
   if (error) throw error

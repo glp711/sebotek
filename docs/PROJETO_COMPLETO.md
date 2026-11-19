@@ -134,6 +134,38 @@ O papel não é escolhido livremente no frontend. Um novo perfil começa como cl
 - Retorno de um sebo aprovado para análise.
 - Bloqueio de autoaprovação pelo lojista.
 - Aplicação da regra também no banco, não apenas na interface.
+- Caixa de mensagens de contato, com filtro "Em aberto"/"Todas", resposta por e-mail e marcação como resolvida.
+
+### Doação de livros
+
+- Página **Doar livros** (`/doar`), também acessível pelo botão "Doar livros" em cada sebo parceiro.
+- O leitor escolhe um sebo verificado e descreve os livros, a quantidade aproximada e a forma de entrega (levar até o sebo ou pedir retirada, informando bairro e cidade).
+- O doador informa nome e WhatsApp, que ficam visíveis apenas para o sebo escolhido.
+- Lista **Minhas doações** com o status de cada oferta e a resposta do sebo.
+- O doador pode cancelar uma oferta enquanto ela estiver aguardando o sebo.
+- Depois que o sebo aceita, aparece o botão "Combinar pelo WhatsApp".
+- No painel **Meu sebo**, a seção **Doações recebidas** lista as ofertas, com filtros, resposta opcional ao doador, botão de WhatsApp e as ações Aceitar, Recusar e Marcar como recebida.
+
+Fluxo de status, garantido por trigger no banco:
+
+```mermaid
+stateDiagram-v2
+  [*] --> PENDING: leitor oferece
+  PENDING --> ACCEPTED: sebo aceita
+  PENDING --> DECLINED: sebo recusa
+  PENDING --> CANCELLED: leitor cancela
+  ACCEPTED --> RECEIVED: sebo recebe os livros
+  ACCEPTED --> DECLINED: sebo desiste
+```
+
+### Contato
+
+- Página **Contato** (`/contato`), acessível pelo rodapé.
+- Funciona com ou sem conta. Para quem está logado, nome e e-mail já vêm preenchidos.
+- Assuntos: dúvida sobre o site, cadastro de sebo, doação, problema ou erro, sugestão.
+- Atalhos para os casos mais comuns: falar com o sebo pelo WhatsApp, doar livros e cadastrar um sebo.
+- Campo invisível anti-spam (*honeypot*): robôs que o preenchem não geram mensagem.
+- As mensagens chegam na aba Administração.
 
 ### Acessibilidade e experiência
 
@@ -160,7 +192,10 @@ O papel não é escolhido livremente no frontend. Um novo perfil começa como cl
 | `/conta` | Conta do cliente |
 | `/conta?secao=desejos` | Acesso direto à lista de desejos |
 | `/meu-sebo` | Cadastro e painel do lojista |
-| `/admin` | Painel administrativo |
+| `/admin` | Painel administrativo e mensagens de contato |
+| `/doar` | Doação de livros e lista Minhas doações |
+| `/doar?sebo=<id>` | Doação com o sebo já escolhido |
+| `/contato` | Formulário de contato |
 | `/auth/confirm` | Retorno de confirmação de e-mail |
 | `/auth/reset-password` | Retorno de redefinição de senha |
 | `/auth/oauth` | Retorno do Google OAuth |
@@ -262,6 +297,23 @@ Estados de conservação:
 
 Relaciona desejos a livros encontrados. A tabela está preparada para uma automação futura de notificações.
 
+#### `donations`
+
+Ofertas de doação de livros de um leitor para um sebo.
+
+- `donor_id`: leitor que oferece, preenchido automaticamente com o usuário logado.
+- `store_id`: sebo que recebe.
+- `donor_name` e `contact_phone`: copiados para a doação, pois o sebo não tem acesso ao perfil do leitor.
+- `books_description` e `estimated_quantity`: o que será doado (de 1 a 500 livros).
+- `delivery_method`: `DROP_OFF` (o leitor leva) ou `PICKUP` (retirada), com `pickup_area` obrigatório na retirada.
+- `message`: observação do leitor.
+- `status`: `PENDING`, `ACCEPTED`, `DECLINED`, `RECEIVED` ou `CANCELLED`.
+- `store_response` e `responded_at`: resposta do sebo e data da decisão.
+
+#### `contact_messages`
+
+Mensagens enviadas pela página de contato: nome, e-mail, assunto (`topic`), mensagem, `resolved` e, se houver login, `user_id`.
+
 #### `reviews`
 
 Estrutura para avaliações de 1 a 5, comentário e vínculo entre cliente e sebo. A tabela e as policies existem, mas a experiência de avaliação ainda pode ser ampliada na interface.
@@ -282,7 +334,28 @@ Buckets configurados:
 - `book-covers`: capas de livros.
 - `store-photos`: fotos dos sebos.
 
-Ambos aceitam JPEG, PNG e WebP, com limite de 5 MB. A leitura é pública e a alteração é restrita ao proprietário do arquivo. A interface atual aceita URL de capa; upload direto é uma evolução planejada.
+Ambos aceitam JPEG, PNG e WebP, com limite de 5 MB. A leitura é pública e a alteração é restrita ao proprietário do arquivo. Cada usuário só pode gravar dentro de uma pasta com o próprio id (`<bucket>/<id-do-usuário>/<arquivo>`), o que impede que um usuário sobrescreva ou ocupe o espaço de outro. A interface atual aceita URL de capa; upload direto é uma evolução planejada.
+
+### Restrições de integridade
+
+A migration `20261119120000_harden_data_constraints.sql` adiciona regras `CHECK` no banco. Elas valem mesmo para quem chama a API diretamente, sem passar pela interface:
+
+| Tabela | Regra |
+| --- | --- |
+| `books` | título de 1 a 300 caracteres, autor de 1 a 200, resumo até 5.000 |
+| `books` | ISBN com 10 ou 13 dígitos (hífens permitidos) |
+| `books` | ano entre 1400 e 2100, preço até R$ 100.000, quantidade até 10.000 |
+| `books` | URL da capa começando com `http://` ou `https://` |
+| `stores` | nome de 2 a 120 caracteres e slug em formato de URL |
+| `stores` | UF com duas letras maiúsculas, CEP com 8 dígitos |
+| `stores` | telefone com 10 a 13 dígitos, pois ele alimenta o botão do WhatsApp |
+| `profiles` | nome exibido de 1 a 80 caracteres |
+| `wishlists` | título de 1 a 300 caracteres, autor até 200 |
+| `reviews` | comentário até 1.000 caracteres |
+
+As mesmas regras são conferidas antes no navegador (`src/lib/validation.ts`), para mostrar uma mensagem clara sem precisar ir ao servidor. O banco continua sendo a proteção definitiva.
+
+As restrições foram criadas como `NOT VALID`: valem para todo cadastro ou edição nova, mas não impedem a migration caso existam registros antigos fora do padrão. A própria migration traz uma consulta para encontrar esses registros.
 
 ## 9. Segurança e RLS
 
@@ -300,6 +373,24 @@ Regras principais:
 - Apenas administradores aprovam ou devolvem sebos para análise.
 - O cliente gerencia somente a própria wishlist.
 - O cliente edita somente o próprio perfil.
+- O responsável por um sebo não pode avaliar o próprio sebo.
+- Textos, números, ISBN, UF, CEP e telefone são validados por `CHECK` no banco.
+- Uploads no Storage ficam restritos à pasta do próprio usuário.
+
+### Mensagens de erro
+
+Erros técnicos do Supabase (em inglês e com códigos como `23505` ou `42501`) são traduzidos por `src/lib/friendlyErrors.ts` em mensagens claras em português. Exemplos:
+
+| Situação | Mensagem exibida |
+| --- | --- |
+| Conta já possui sebo (`23505` em `owner_id`) | "Esta conta já possui um sebo cadastrado..." |
+| Bloqueio por RLS (`42501`) | "Você não tem permissão para esta ação..." |
+| Regra `CHECK` violada (`23514`) | "Algum campo está com um valor inválido..." |
+| Falha de rede | "Sem conexão com o servidor..." |
+
+### Sebos com o mesmo nome
+
+O `slug` do sebo é único. Antes, um segundo sebo com o mesmo nome de outro (por exemplo, "Sebo Central") não conseguia se cadastrar. Agora o sistema tenta o slug simples e, se ele já estiver em uso, gera automaticamente um slug com sufixo curto, como `sebo-central-k3x9`.
 
 O frontend usa somente uma chave pública `publishable`. Nunca devem ser colocados no navegador:
 
@@ -382,12 +473,22 @@ src/
   components/
     BookCover.tsx            # capa real ou alternativa
     CatalogBrowser.tsx       # filtros, ordenação, grade e lista
+    DonationView.tsx         # página Doar livros e Minhas doações
+    StoreDonations.tsx       # doações recebidas no painel do sebo
+    ContactView.tsx          # página de contato
+    AdminMessages.tsx        # mensagens de contato no admin
+  features.css               # estilos de doação, contato e rodapé
   data/
     demoCatalog.ts           # catálogo de demonstração
   lib/
     catalog.ts               # operações com Auth e banco
     catalogFilters.ts        # busca, filtros, ordenação e WhatsApp
+    donations.ts             # doações e mensagens de contato
+    labels.ts                # rótulos de status, entrega e assunto
+    friendlyErrors.ts        # tradução de erros técnicos para português
+    slug.ts                  # geração de slug único para sebos
     supabase.ts              # criação do cliente Supabase
+    validation.ts            # validação de livros e sebos antes do envio
   types.ts                   # contratos TypeScript
 supabase/
   migrations/                # evolução versionada do banco
@@ -396,6 +497,9 @@ scripts/
   verify-panels.mjs          # teste dos painéis com API simulada
 tests/
   catalogFilters.test.mjs    # testes das regras de catálogo
+  friendlyErrors.test.mjs    # testes das mensagens de erro
+  validation.test.mjs        # testes de validação e slug
+  donations.test.mjs         # testes de validação de doação e contato
 docs/                        # documentação do projeto
 vercel.json                  # build e fallback de rotas
 ```
@@ -471,7 +575,15 @@ npm run test:panels
 - combinação de filtros;
 - preço máximo zero;
 - ordenação sem mutar o catálogo original;
-- normalização do número do WhatsApp.
+- normalização do número do WhatsApp;
+- tradução de erros do Auth, do Postgres (`23505`, `42501`, `23514`, `22P02`) e de rede;
+- geração de slug sem acentos e com sufixo quando o nome se repete;
+- validação de título, preço (inclusive com vírgula), quantidade, ano, ISBN e URL da capa;
+- validação de UF, CEP e telefone do sebo;
+- validação da doação (sebo, telefone, descrição, quantidade e local de retirada);
+- validação da mensagem de contato (nome, e-mail, assunto e tamanho).
+
+São 18 testes no total, executados em menos de um segundo.
 
 ### Teste de interface
 
@@ -501,7 +613,12 @@ npm run test:panels
 - aprovação administrativa;
 - criação, edição e exclusão de livro;
 - persistência da wishlist;
-- painel do lojista no celular.
+- painel do lojista no celular;
+- sebo aceita uma doação com resposta e depois a marca como recebida;
+- leitor oferece uma doação com retirada a partir de Sebos parceiros e depois a cancela;
+- envio do formulário de contato;
+- administrador lê e resolve a mensagem;
+- página de doação no celular sem rolagem horizontal.
 
 Para testar a produção:
 
@@ -528,6 +645,22 @@ Configuração de `vercel.json`:
 - saída: `dist`;
 - instalação: `npm install`;
 - fallback de todas as rotas para `index.html`.
+
+### Migrations do banco
+
+A Vercel publica apenas o frontend. Uma migration nova precisa ser aplicada no Supabase separadamente, por uma destas opções:
+
+- Supabase CLI: `npx supabase db push` (com o projeto vinculado);
+- Dashboard: `SQL Editor`, colar o conteúdo do arquivo da migration e executar.
+
+Ordem recomendada: aplicar a migration primeiro e depois publicar o frontend. Antes de aplicar `20261119120000_harden_data_constraints.sql`, rode a consulta de conferência que está no comentário do arquivo para encontrar sebos antigos com telefone ou CEP fora do padrão.
+
+Migrations pendentes desta versão, nesta ordem:
+
+1. `20261119120000_harden_data_constraints.sql`: validações e Storage.
+2. `20261119130000_add_donations_and_contact.sql`: tabelas `donations` e `contact_messages`, policies e trigger de status.
+
+Sem a segunda migration, as páginas Doar livros e Contato abrem, mas mostram erro ao enviar.
 
 ## 15. Fluxos completos
 
@@ -568,11 +701,12 @@ Configuração de `vercel.json`:
 5. Abrir o livro e mostrar detalhes, link e WhatsApp.
 6. Mostrar Sebos parceiros.
 7. Entrar como cliente e abrir a Lista de desejos.
-8. Mostrar Meu sebo e explicar o bloqueio até aprovação.
-9. Entrar com a conta administrativa de demonstração.
-10. Aprovar um cadastro pendente ou explicar a ação.
-11. Mostrar rapidamente as migrations e as policies RLS.
-12. Encerrar com arquitetura, testes e possibilidades futuras.
+8. Em Sebos parceiros, clicar em "Doar livros" e enviar uma oferta.
+9. Mostrar Meu sebo, explicar o bloqueio até aprovação e aceitar a doação em Doações recebidas.
+10. Entrar com a conta administrativa de demonstração.
+11. Aprovar um cadastro pendente e mostrar as mensagens de contato.
+12. Mostrar rapidamente as migrations, as policies RLS e o trigger de status das doações.
+13. Encerrar com arquitetura, testes e possibilidades futuras.
 
 Antes da apresentação:
 
@@ -622,6 +756,22 @@ O Supabase Auth gera a confirmação ou recuperação e usa a Brevo como servido
 
 O Google autentica a identidade, o Supabase cria ou recupera o usuário e o app processa o retorno em `/auth/oauth`.
 
+### Como funciona a doação de livros?
+
+O leitor escolhe um sebo verificado, descreve os livros e informa como pretende entregar. O sebo vê a oferta em Doações recebidas, aceita ou recusa e, depois de receber, marca como recebida. A conversa sobre dia e horário acontece pelo WhatsApp, como no restante do sistema.
+
+### Um sebo pode alterar a doação de outro sebo, ou o leitor pode marcar a própria doação como recebida?
+
+Não. As policies só deixam o dono do sebo responder às doações do próprio sebo, e o doador só enxerga as próprias ofertas. Além disso, um trigger (`private.enforce_donation_transition`) confere cada mudança de status no banco: o doador só pode cancelar uma oferta pendente, e o sebo só pode seguir o fluxo Pendente, Aceita, Recebida (ou Recusada). Qualquer outra transição é rejeitada mesmo se alguém chamar a API diretamente.
+
+### Por que o nome e o telefone do doador ficam salvos na doação?
+
+Porque a tabela `profiles` só pode ser lida pelo próprio usuário. Em vez de abrir o perfil inteiro para o sebo, a doação guarda apenas o nome e o telefone que o leitor escolheu compartilhar com aquele sebo.
+
+### Qualquer pessoa pode enviar mensagem de contato? Isso não gera spam?
+
+Sim, o contato funciona sem login, como um "fale conosco". Para reduzir abuso, existem limites de tamanho e formato no banco, um campo invisível que barra robôs simples e a leitura restrita a administradores. Em produção real, seria recomendado adicionar um CAPTCHA ou um limite de envios por IP.
+
 ### A aplicação funciona sem banco?
 
 Sim, em modo demonstrativo com catálogo local. Operações de autenticação e persistência exigem Supabase.
@@ -630,13 +780,29 @@ Sim, em modo demonstrativo com catálogo local. Operações de autenticação e 
 
 Para o escopo do MVP, as operações são protegidas por sessão e RLS. A chave secreta não é enviada ao navegador. Ainda assim, produção real exigiria auditorias, monitoramento, políticas de retenção, LGPD e testes adicionais.
 
+### Como os dados são validados?
+
+Em duas camadas. O navegador confere os campos antes do envio e mostra uma mensagem clara. O banco repete as regras com restrições `CHECK`, que também protegem contra chamadas diretas à API. A interface é a camada de conveniência e o banco é a proteção definitiva.
+
+### O que acontece se dois sebos tiverem o mesmo nome?
+
+Os dois podem se cadastrar. O nome pode se repetir, mas o `slug` é único: se o slug simples já estiver em uso, o sistema gera outro com um sufixo curto.
+
+### Por que as mensagens de erro aparecem em português?
+
+O Supabase devolve erros técnicos em inglês com códigos do Postgres. O módulo `friendlyErrors.ts` reconhece esses códigos e mostra uma explicação que o usuário entende, sem expor detalhes internos.
+
 ### Como foi testado?
 
-Foram usados testes unitários para busca e filtros, Playwright para interface e testes interceptados para os painéis sem modificar a produção.
+Foram usados testes unitários para busca, filtros, validações e mensagens de erro, Playwright para a interface e testes interceptados para os painéis, sem modificar a produção.
 
 ## 18. Limitações atuais
 
 - Upload direto de imagens ainda não está exposto na interface.
+- O contato não envia e-mail automático para a equipe; as mensagens ficam no painel de administração.
+- O contato sem login não tem CAPTCHA nem limite de envios por IP.
+- O sebo não escolhe se aceita doações: todo sebo verificado aparece na lista.
+- Doações e contato não funcionam no modo demonstração, pois precisam do Supabase.
 - Compra e pagamento não fazem parte do MVP.
 - A negociação acontece pelo WhatsApp.
 - Reserva de exemplar ainda não existe.
@@ -657,6 +823,8 @@ Foram usados testes unitários para busca e filtros, Playwright para interface e
 - Dashboard de vendas e acervo.
 - Histórico de aprovação com observação do administrador.
 - Testes automatizados reais das policies com usuários de cada papel.
+- Dividir `App.tsx` (cerca de 2.900 linhas) em um arquivo por tela (`AuthBox`, `ClientPanel`, `OwnerPanel`, `AdminPanel`) para facilitar manutenção.
+- Permitir que o responsável edite telefone e horário depois da aprovação (hoje a policy só permite edição enquanto o sebo está pendente).
 - Backend Node.js para jobs e integrações privadas.
 - Adequação completa à LGPD e termos de uso.
 
@@ -712,9 +880,9 @@ Foram usados testes unitários para busca e filtros, Playwright para interface e
 ## 21. Divisão sugerida para o grupo
 
 - Pessoa 1: problema, objetivos, público e catálogo.
-- Pessoa 2: cliente, autenticação, Google, Brevo e wishlist.
-- Pessoa 3: lojista, aprovação e CRUD de livros.
-- Pessoa 4: administração, arquitetura, banco, RLS, testes e deploy.
+- Pessoa 2: cliente, autenticação, Google, Brevo, wishlist e contato.
+- Pessoa 3: lojista, aprovação, CRUD de livros e doações recebidas.
+- Pessoa 4: administração, arquitetura, banco, RLS, trigger de doações, testes e deploy.
 
 Todos devem saber responder:
 
