@@ -43,11 +43,19 @@ test('slugWithSuffix creates a different, valid slug for repeated names', () => 
 
 test('isSlugConflict only matches the unique slug violation', () => {
   assert.equal(
-    isSlugConflict({ code: '23505', message: 'duplicate key value violates unique constraint "stores_slug_key"' }),
+    isSlugConflict({
+      code: '23505',
+      message:
+        'duplicate key value violates unique constraint "stores_slug_key"',
+    }),
     true,
   )
   assert.equal(
-    isSlugConflict({ code: '23505', message: 'duplicate key value violates unique constraint "stores_owner_id_key"' }),
+    isSlugConflict({
+      code: '23505',
+      message:
+        'duplicate key value violates unique constraint "stores_owner_id_key"',
+    }),
     false,
   )
   assert.equal(isSlugConflict(null), false)
@@ -56,9 +64,15 @@ test('isSlugConflict only matches the unique slug violation', () => {
 test('accepts a complete valid book and a price with comma', () => {
   assert.equal(validateBookDraft(book), null)
   assert.equal(validateBookDraft({ ...book, price: '12,50' }), null)
-  assert.equal(validateBookDraft({ ...book, coverUrl: '/covers/marina.png' }), null)
+  assert.equal(
+    validateBookDraft({ ...book, coverUrl: '/covers/marina.png' }),
+    null,
+  )
   assert.ok(validateBookDraft({ ...book, coverUrl: '/covers/../marina.png' }))
-  assert.equal(validateBookDraft({ ...book, isbn: '', publishedYear: '', coverUrl: '' }), null)
+  assert.equal(
+    validateBookDraft({ ...book, isbn: '', publishedYear: '', coverUrl: '' }),
+    null,
+  )
 })
 
 test('rejects invalid book values before calling the database', () => {
@@ -66,9 +80,15 @@ test('rejects invalid book values before calling the database', () => {
   assert.match(validateBookDraft({ ...book, price: 'abc' }), /preço válido/)
   assert.match(validateBookDraft({ ...book, price: '-1' }), /preço válido/)
   assert.match(validateBookDraft({ ...book, quantity: '1.5' }), /inteiro/)
-  assert.match(validateBookDraft({ ...book, publishedYear: '3000' }), /ano entre/)
+  assert.match(
+    validateBookDraft({ ...book, publishedYear: '3000' }),
+    /ano entre/,
+  )
   assert.match(validateBookDraft({ ...book, isbn: '123' }), /ISBN/)
-  assert.match(validateBookDraft({ ...book, coverUrl: 'javascript:alert(1)' }), /http/)
+  assert.match(
+    validateBookDraft({ ...book, coverUrl: 'javascript:alert(1)' }),
+    /http/,
+  )
 })
 
 test('validates store UF, CEP and WhatsApp phone', () => {
@@ -77,4 +97,30 @@ test('validates store UF, CEP and WhatsApp phone', () => {
   assert.match(validateStoreDraft({ ...store, zipCode: '123' }), /CEP/)
   assert.match(validateStoreDraft({ ...store, phone: '9999' }), /telefone/)
   assert.equal(validateStoreDraft({ ...store, zipCode: '' }), null)
+})
+
+test('limits real copy photos and conservation notes', () => {
+  assert.equal(
+    validateBookDraft({
+      ...book,
+      conditionNotes: 'Dedicatória',
+      copyPhotos: ['https://example.com/real.jpg'],
+    }),
+    null,
+  )
+  assert.match(
+    validateBookDraft({ ...book, conditionNotes: 'a'.repeat(501) }),
+    /500/,
+  )
+  assert.match(
+    validateBookDraft({ ...book, copyPhotos: ['javascript:alert(1)'] }),
+    /fotos/,
+  )
+  assert.match(
+    validateBookDraft({
+      ...book,
+      copyPhotos: Array(4).fill('https://example.com/a.jpg'),
+    }),
+    /3 fotos/,
+  )
 })

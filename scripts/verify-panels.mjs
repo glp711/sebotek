@@ -87,6 +87,10 @@ await context.route(
   async (route) => {
     const request = route.request(),
       url = new URL(request.url())
+    if(url.pathname.includes('/storage/v1/')){
+      if(request.method()==='GET')return route.fulfill({path:'public/covers/marina.png',contentType:'image/png'})
+      return route.fulfill({json:{Key:'book-covers/test-copy.png'}})
+    }
     if (url.pathname.includes('/auth/v1/')) {
       return route.fulfill({
         json: url.pathname.endsWith('/user') ? user : { user },
@@ -103,6 +107,13 @@ await context.route(
         books.push({ id: 'book-test', ...payload, stores: { ...store } })
       if (table === 'books' && method === 'PATCH')
         Object.assign(books[0], payload)
+      if (
+        table === 'books' &&
+        method === 'PATCH' &&
+        url.searchParams.has('select')
+      )
+        return route.fulfill({ json: { id: books[0].id } })
+      if (table === 'reader_demand') return route.fulfill({ json: [] })
       if (table === 'books' && method === 'DELETE') books.splice(0)
       if (table === 'wishlists' && method === 'POST')
         wishes.push({ id: 'wish-test', ...payload, notified: false })
@@ -185,11 +196,36 @@ try {
     .fill('Livro de verificação')
   await editor.getByLabel('Autor', { exact: true }).fill('Autor de teste')
   await editor.getByLabel('Preço', { exact: true }).fill('29.90')
+  await editor.locator('input[type="file"]').setInputFiles('public/covers/marina.png')
+  await editor.locator('.copy-photo-list img').waitFor()
+  await editor.locator('.copy-photo-list img').evaluate(img=>img.decode())
+  await editor
+    .getByLabel('Marcas de uso e detalhes')
+    .fill('Dedicatória na primeira página')
   await editor
     .getByRole('button', { name: 'Cadastrar livro', exact: true })
     .click()
   await page.locator('.inventory-item').waitFor()
   assert.equal(books.length, 1)
+  assert.equal(books[0].copy_photos.length,1)
+  await page
+    .getByRole('button', {
+      name: 'Cadastrar outro exemplar de Livro de verificação',
+    })
+    .click()
+  assert.equal(
+    await editor.getByLabel('Título', { exact: true }).inputValue(),
+    'Livro de verificação',
+  )
+  assert.equal(
+    await editor.getByLabel('Marcas de uso e detalhes').inputValue(),
+    '',
+  )
+  assert.equal(await editor.locator('.copy-photo-list img').count(),0)
+  assert.equal(
+    await editor.getByLabel('Quantidade', { exact: true }).inputValue(),
+    '1',
+  )
   await page.getByRole('button', { name: 'Editar livro', exact: true }).click()
   await editor.getByLabel('Preço', { exact: true }).fill('19.90')
   await editor
@@ -244,39 +280,76 @@ try {
   await received
     .getByLabel('Resposta para o doador (opcional)')
     .fill('Pode trazer no sábado de manhã.')
-  await received.getByRole('button', { name: 'Aceitar doação', exact: true }).click()
-  await page.getByText('Doação de Doadora de teste aceita.', { exact: false }).waitFor()
+  await received
+    .getByRole('button', { name: 'Aceitar doação', exact: true })
+    .click()
+  await page
+    .getByText('Doação de Doadora de teste aceita.', { exact: false })
+    .waitFor()
   assert.equal(donations[0].status, 'ACCEPTED')
   assert.equal(donations[0].store_response, 'Pode trazer no sábado de manhã.')
-  await received.getByRole('button', { name: 'Marcar como recebida', exact: true }).click()
-  await page.getByText('Doação marcada como recebida.', { exact: false }).waitFor()
+  await received
+    .getByRole('button', { name: 'Marcar como recebida', exact: true })
+    .click()
+  await page
+    .getByText('Doação marcada como recebida.', { exact: false })
+    .waitFor()
   assert.equal(donations[0].status, 'RECEIVED')
-  await page.screenshot({ path: path.join(output, 'store-donations.png'), fullPage: true })
+  await page.screenshot({
+    path: path.join(output, 'store-donations.png'),
+    fullPage: true,
+  })
 
   // Leitor oferece uma doação a partir de Sebos parceiros
-  await page.getByLabel('Navegação principal').getByRole('link', { name: 'Sebos parceiros' }).click()
-  await page.getByRole('button', { name: 'Doar livros', exact: true }).first().click()
+  await page
+    .getByLabel('Navegação principal')
+    .getByRole('link', { name: 'Sebos parceiros' })
+    .click()
+  await page
+    .getByRole('button', { name: 'Doar livros', exact: true })
+    .first()
+    .click()
   const donationForm = page.locator('#donation-form')
   await donationForm.waitFor()
-  assert.equal(await donationForm.getByLabel('Sebo que vai receber').inputValue(), store.id)
-  await donationForm.getByLabel('Livros para doar').fill('Coleção de clássicos brasileiros')
+  assert.equal(
+    await donationForm.getByLabel('Sebo que vai receber').inputValue(),
+    store.id,
+  )
+  await donationForm
+    .getByLabel('Livros para doar')
+    .fill('Coleção de clássicos brasileiros')
   await donationForm.getByLabel('Quantidade aproximada').fill('8')
   await donationForm.getByLabel('Entrega').selectOption('PICKUP')
-  await donationForm.getByLabel('Bairro e cidade para retirada').fill('Tijuca, Rio de Janeiro')
+  await donationForm
+    .getByLabel('Bairro e cidade para retirada')
+    .fill('Tijuca, Rio de Janeiro')
   await donationForm.getByLabel('WhatsApp para contato').fill('(21) 97777-6666')
-  await donationForm.getByRole('button', { name: 'Enviar oferta de doação' }).click()
-  await page.getByText('Doação enviada para Sebo de teste.', { exact: false }).waitFor()
+  await donationForm
+    .getByRole('button', { name: 'Enviar oferta de doação' })
+    .click()
+  await page
+    .getByText('Doação enviada para Sebo de teste.', { exact: false })
+    .waitFor()
   const created = donations.find((item) => item.id === 'donation-new')
   assert.equal(created?.delivery_method, 'PICKUP')
   assert.equal(created?.pickup_area, 'Tijuca, Rio de Janeiro')
-  await page.locator('#my-donations').getByText('Coleção de clássicos brasileiros').waitFor()
+  await page
+    .locator('#my-donations')
+    .getByText('Coleção de clássicos brasileiros')
+    .waitFor()
   await page.getByRole('button', { name: 'Cancelar oferta' }).click()
   await page.getByText('Doação cancelada.').waitFor()
   assert.equal(created?.status, 'CANCELLED')
-  await page.screenshot({ path: path.join(output, 'donate.png'), fullPage: true })
+  await page.screenshot({
+    path: path.join(output, 'donate.png'),
+    fullPage: true,
+  })
 
   // Formulário de contato
-  await page.getByRole('contentinfo').getByRole('link', { name: 'Contato' }).click()
+  await page
+    .getByRole('contentinfo')
+    .getByRole('link', { name: 'Contato' })
+    .click()
   await page.getByLabel('Nome', { exact: true }).fill('Pessoa de teste')
   await page.getByLabel('Assunto').selectOption('SUGESTAO')
   await page
@@ -300,10 +373,15 @@ try {
   await page.goto(base + '/doar', { waitUntil: 'domcontentloaded' })
   await page.locator('#donation-form').waitFor()
   assert.ok(
-    await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth),
+    await page.evaluate(
+      () => document.documentElement.scrollWidth <= innerWidth,
+    ),
     'Donation page fits mobile',
   )
-  await page.screenshot({ path: path.join(output, 'donate-mobile.png'), fullPage: true })
+  await page.screenshot({
+    path: path.join(output, 'donate-mobile.png'),
+    fullPage: true,
+  })
   assert.deepEqual(errors, [])
   console.log(
     JSON.stringify(

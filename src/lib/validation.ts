@@ -47,8 +47,33 @@ export const CONTACT_TOPICS: readonly ContactTopic[] = [
 ]
 
 export const BRAZILIAN_STATES = [
-  'AC', 'AL', 'AP', 'AM', 'BA', 'CE', 'DF', 'ES', 'GO', 'MA', 'MT', 'MS', 'MG', 'PA',
-  'PB', 'PR', 'PE', 'PI', 'RJ', 'RN', 'RS', 'RO', 'RR', 'SC', 'SP', 'SE', 'TO',
+  'AC',
+  'AL',
+  'AP',
+  'AM',
+  'BA',
+  'CE',
+  'DF',
+  'ES',
+  'GO',
+  'MA',
+  'MT',
+  'MS',
+  'MG',
+  'PA',
+  'PB',
+  'PR',
+  'PE',
+  'PI',
+  'RJ',
+  'RN',
+  'RS',
+  'RO',
+  'RR',
+  'SC',
+  'SP',
+  'SE',
+  'TO',
 ] as const
 
 const digits = (value: string) => value.replace(/\D/g, '')
@@ -56,6 +81,15 @@ const digits = (value: string) => value.replace(/\D/g, '')
 const tooLong = (value: string, max: number) => value.trim().length > max
 
 export function validateBookDraft(draft: BookDraft): string | null {
+  if ((draft.conditionNotes?.length ?? 0) > 500)
+    return 'As observações podem ter até 500 caracteres.'
+  if (
+    (draft.copyPhotos?.length ?? 0) > 3 ||
+    draft.copyPhotos?.some(
+      (url) => url.length > 2048 || !/^https:\/\//i.test(url),
+    )
+  )
+    return 'Adicione no máximo 3 fotos com endereços HTTPS válidos.'
   if (!draft.title.trim()) return 'Informe o título do livro.'
   if (!draft.author.trim()) return 'Informe o autor do livro.'
   if (tooLong(draft.title, LIMITS.bookTitle))
@@ -83,7 +117,11 @@ export function validateBookDraft(draft: BookDraft): string | null {
 
   if (draft.publishedYear.trim()) {
     const year = Number(draft.publishedYear)
-    if (!Number.isInteger(year) || year < LIMITS.minYear || year > LIMITS.maxYear)
+    if (
+      !Number.isInteger(year) ||
+      year < LIMITS.minYear ||
+      year > LIMITS.maxYear
+    )
       return `Informe um ano entre ${LIMITS.minYear} e ${LIMITS.maxYear}.`
   }
 
@@ -95,8 +133,12 @@ export function validateBookDraft(draft: BookDraft): string | null {
 
   const coverUrl = draft.coverUrl.trim()
   if (coverUrl) {
-    if (coverUrl.length > LIMITS.coverUrl) return 'O endereço da capa é muito longo.'
-    if (!/^https?:\/\//i.test(coverUrl) && !/^\/covers\/[a-z0-9-]+\.png$/.test(coverUrl))
+    if (coverUrl.length > LIMITS.coverUrl)
+      return 'O endereço da capa é muito longo.'
+    if (
+      !/^https?:\/\//i.test(coverUrl) &&
+      !/^\/covers\/[a-z0-9-]+\.png$/.test(coverUrl)
+    )
       return 'Use um endereço http:// ou https://, ou uma capa do catálogo em /covers/.'
   }
 
@@ -147,7 +189,11 @@ export function validateDonationDraft(draft: DonationDraft): string | null {
   if (books.length > LIMITS.donationBooks)
     return `A lista de livros pode ter no máximo ${LIMITS.donationBooks} caracteres.`
   const quantity = Number(draft.estimatedQuantity)
-  if (!Number.isInteger(quantity) || quantity < 1 || quantity > LIMITS.maxDonationQuantity)
+  if (
+    !Number.isInteger(quantity) ||
+    quantity < 1 ||
+    quantity > LIMITS.maxDonationQuantity
+  )
     return `Informe uma quantidade entre 1 e ${LIMITS.maxDonationQuantity} livros.`
   if (draft.deliveryMethod === 'PICKUP') {
     const area = draft.pickupArea.trim()
@@ -162,13 +208,16 @@ export function validateDonationDraft(draft: DonationDraft): string | null {
 
 export function validateContactDraft(draft: ContactDraft): string | null {
   const name = draft.name.trim()
-  if (name.length < 2 || name.length > LIMITS.contactName) return 'Informe seu nome.'
+  if (name.length < 2 || name.length > LIMITS.contactName)
+    return 'Informe seu nome.'
   const email = draft.email.trim()
   if (email.length > 254 || !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email))
     return 'Informe um e-mail válido para receber a resposta.'
-  if (!CONTACT_TOPICS.includes(draft.topic)) return 'Escolha o assunto da mensagem.'
+  if (!CONTACT_TOPICS.includes(draft.topic))
+    return 'Escolha o assunto da mensagem.'
   const message = draft.message.trim()
-  if (message.length < 10) return 'Escreva uma mensagem com pelo menos 10 caracteres.'
+  if (message.length < 10)
+    return 'Escreva uma mensagem com pelo menos 10 caracteres.'
   if (message.length > LIMITS.contactMessage)
     return `A mensagem pode ter no máximo ${LIMITS.contactMessage} caracteres.`
   return null

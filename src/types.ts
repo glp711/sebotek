@@ -34,6 +34,8 @@ export type ProfileRecord = {
 }
 
 export type BookRecord = {
+  conditionNotes?: string
+  copyPhotos?: string[]
   id: string
   title: string
   author: string
@@ -82,6 +84,8 @@ export type StoreDraft = {
 }
 
 export type BookDraft = {
+  conditionNotes?: string
+  copyPhotos?: string[]
   title: string
   author: string
   isbn: string

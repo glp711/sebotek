@@ -65,6 +65,12 @@ const normalizeBook = (row: Record<string, unknown>): BookRecord => {
     publisher: nullableString(row.publisher),
     publishedYear: nullableNumber(row.published_year ?? row.publishedYear),
     condition: String(row.condition ?? 'GOOD') as BookRecord['condition'],
+    conditionNotes: String(row.condition_notes ?? ''),
+    copyPhotos: Array.isArray(row.copy_photos)
+      ? row.copy_photos.filter(
+          (p): p is string => typeof p === 'string' && /^https:\/\//i.test(p),
+        )
+      : [],
     price: Number(row.price ?? 0),
     quantity: Number(row.quantity ?? 0),
     coverUrl: nullableString(row.cover_url ?? row.coverUrl),
@@ -106,17 +112,19 @@ const bookDraftToRow = (draft: BookDraft) => {
   const invalid = validateBookDraft(draft)
   if (invalid) throw new Error(invalid)
   return {
-  title: draft.title.trim(),
-  author: draft.author.trim(),
-  isbn: cleanString(draft.isbn),
-  category: cleanString(draft.category),
-  summary: cleanString(draft.summary),
-  publisher: cleanString(draft.publisher),
-  published_year: draft.publishedYear ? Number(draft.publishedYear) : null,
-  condition: draft.condition,
-  price: Number(draft.price.replace(',', '.')),
-  quantity: Number(draft.quantity || 0),
-  cover_url: cleanString(draft.coverUrl),
+    title: draft.title.trim(),
+    author: draft.author.trim(),
+    isbn: cleanString(draft.isbn),
+    category: cleanString(draft.category),
+    summary: cleanString(draft.summary),
+    publisher: cleanString(draft.publisher),
+    published_year: draft.publishedYear ? Number(draft.publishedYear) : null,
+    condition: draft.condition,
+    condition_notes: draft.conditionNotes?.trim() ?? '',
+    copy_photos: draft.copyPhotos ?? [],
+    price: Number(draft.price.replace(',', '.')),
+    quantity: Number(draft.quantity || 0),
+    cover_url: cleanString(draft.coverUrl),
   }
 }
 
@@ -180,9 +188,7 @@ export async function loadCatalog(term = ''): Promise<CatalogPayload> {
 
   const { data: booksData, error: booksError } = await supabase
     .from('books')
-    .select(
-      `id,title,author,isbn,category,summary,publisher,published_year,condition,price,quantity,cover_url,store_id,created_at,updated_at,stores!inner(${publicStoreColumns})`,
-    )
+    .select(`*,stores!inner(${publicStoreColumns})`)
     .gt('quantity', 0)
     .eq('stores.approved', true)
     .order('created_at', { ascending: false })
@@ -377,7 +383,9 @@ export async function updateMyProfile(displayName: string) {
   const name = displayName.trim()
   if (!name) throw new Error('Informe o nome que será exibido.')
   if (name.length > LIMITS.displayName)
-    throw new Error(`O nome pode ter no máximo ${LIMITS.displayName} caracteres.`)
+    throw new Error(
+      `O nome pode ter no máximo ${LIMITS.displayName} caracteres.`,
+    )
 
   const { error } = await supabase
     .from('profiles')
@@ -494,9 +502,7 @@ export async function loadMyBooks(storeId: string): Promise<BookRecord[]> {
 
   const { data, error } = await supabase
     .from('books')
-    .select(
-      `id,title,author,isbn,category,summary,publisher,published_year,condition,price,quantity,cover_url,store_id,created_at,updated_at,stores(${publicStoreColumns})`,
-    )
+    .select(`*,stores(${publicStoreColumns})`)
     .eq('store_id', storeId)
     .order('updated_at', { ascending: false })
 
@@ -504,15 +510,25 @@ export async function loadMyBooks(storeId: string): Promise<BookRecord[]> {
   return (data ?? []).map((row) => normalizeBook(row))
 }
 
-export async function updateBook(bookId: string, draft: BookDraft) {
+export async function updateBook(
+  bookId: string,
+  draft: BookDraft,
+  updatedAt?: string,
+) {
   if (!supabase) throw new Error('Configure o Supabase no arquivo .env.local.')
   if (!bookId) throw new Error('Escolha um livro para editar.')
 
-  const { error } = await supabase
+  let query = supabase
     .from('books')
     .update(bookDraftToRow(draft))
     .eq('id', bookId)
+  if (updatedAt) query = query.eq('updated_at', updatedAt)
+  const { data, error } = await query.select('id').maybeSingle()
   if (error) throw error
+  if (!data)
+    throw new Error(
+      'O estoque mudou desde a abertura do formulário. Recarregue o acervo antes de editar novamente.',
+    )
 }
 
 export async function deleteBook(bookId: string) {
@@ -549,7 +565,10 @@ export async function createWishlistItem(title: string, author: string) {
 
   const cleanTitle = title.trim()
   if (!cleanTitle) throw new Error('Informe o título do livro desejado.')
-  if (cleanTitle.length > LIMITS.wishlistTitle || author.trim().length > LIMITS.wishlistAuthor)
+  if (
+    cleanTitle.length > LIMITS.wishlistTitle ||
+    author.trim().length > LIMITS.wishlistAuthor
+  )
     throw new Error('O título ou o autor do desejo está longo demais.')
 
   const { error } = await supabase.from('wishlists').insert({

@@ -80,14 +80,11 @@ try {
     .getByRole('link', { name: /Lista de desejos/ })
     .click()
   await page.locator('#wishlist-panel').waitFor()
+  assert.equal(new URL(page.url()).searchParams.get('secao'), 'desejos')
   assert.equal(
-    new URL(page.url()).searchParams.get('secao'),
-    'desejos',
-  )
-  assert.equal(
-    await page.locator('#wishlist-panel').evaluate(
-      (element) => element === document.activeElement,
-    ),
+    await page
+      .locator('#wishlist-panel')
+      .evaluate((element) => element === document.activeElement),
     true,
   )
   console.log('Wishlist shortcut passed')
@@ -143,6 +140,17 @@ try {
   assert.ok(await confirmCodeButton.isDisabled())
   await page.getByLabel('Código de confirmação').fill('123456789')
   assert.equal(await confirmCodeButton.isEnabled(), true)
+  assert.ok(
+    await page.getByRole('button', { name: /Reenviar em/ }).isDisabled(),
+  )
+  await page.reload()
+  await page
+    .getByRole('heading', { name: 'Digite o código recebido' })
+    .waitFor()
+  assert.ok(
+    await page.getByRole('button', { name: /Reenviar em/ }).isDisabled(),
+  )
+  await page.getByLabel('Código de confirmação').fill('123456789')
   await page.screenshot({
     path: path.join(output, 'confirmation-code.png'),
     fullPage: true,

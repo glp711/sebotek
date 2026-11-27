@@ -47,6 +47,9 @@ import './features.css'
 import { AdminMessages } from './components/AdminMessages'
 import { CatalogBrowser } from './components/CatalogBrowser'
 import { BookCover } from './components/BookCover'
+import { Pickups } from './components/Pickups'
+import { CopyEditor } from './components/CopyEditor'
+import { supabase } from './lib/supabase'
 import { ContactView } from './components/ContactView'
 import { DonationView } from './components/DonationView'
 import { StoreDonations } from './components/StoreDonations'
@@ -331,7 +334,7 @@ function App() {
       setQuery(params.get('q') ?? '')
       setStoreFilter(params.get('sebo') ?? '')
       setSelectedBook(
-        bookId ? books.find((book) => book.id === bookId) ?? null : null,
+        bookId ? (books.find((book) => book.id === bookId) ?? null) : null,
       )
     }
     window.addEventListener('popstate', onPopState)
@@ -389,10 +392,7 @@ function App() {
   ]
   const featuredBooks = books.slice(0, 4)
   const verifiedStores = stores.filter((store) => store.approved).length
-  const totalInventory = books.reduce(
-    (total, book) => total + book.quantity,
-    0,
-  )
+  const totalInventory = books.reduce((total, book) => total + book.quantity, 0)
   const wishlistView =
     activeView === 'client' &&
     new URLSearchParams(window.location.search).get('secao') === 'desejos'
@@ -479,8 +479,8 @@ function App() {
             </div>
             <h1>Sebo Virtual conecta leitores a sebos independentes.</h1>
             <p>
-              Encontre livros usados por título, autor, categoria ou ISBN e
-              fale direto com o sebo que tem o exemplar disponível.
+              Encontre livros usados por título, autor, categoria ou ISBN e fale
+              direto com o sebo que tem o exemplar disponível.
             </p>
             <form
               className="search-box"
@@ -537,10 +537,7 @@ function App() {
           <div className="hero-visual" aria-label="Resumo do acervo">
             <div className="stacked-books" aria-hidden="true">
               {featuredBooks.map((book, index) => (
-                <div
-                  className={`book-spine spine-${index + 1}`}
-                  key={book.id}
-                >
+                <div className={`book-spine spine-${index + 1}`} key={book.id}>
                   <span>{book.title}</span>
                   <small>{book.author}</small>
                 </div>
@@ -652,6 +649,9 @@ function App() {
             <>
               {activeView === 'client' && (
                 <ClientPanel
+                  key={session?.user.id}
+                  books={source === 'supabase' ? books : []}
+                  onCatalogChange={refreshCatalog}
                   session={session}
                   onAuthChange={refreshSession}
                   onCatalogSearch={(term) => showView('catalog', term)}
@@ -720,6 +720,36 @@ function App() {
       </footer>
       {selectedBook && (
         <BookDetailDialog
+          key={selectedBook.id}
+          offers={books
+            .filter(
+              (b) =>
+                normalizeSearch(b.title) ===
+                  normalizeSearch(selectedBook.title) &&
+                normalizeSearch(b.author) ===
+                  normalizeSearch(selectedBook.author),
+            )
+            .sort((a, b) => a.price - b.price)}
+          onSelect={openBook}
+          reserve={
+            source === 'supabase'
+              ? async () => {
+                  if (!session) {
+                    showView('client')
+                    return
+                  }
+                  if (!supabase) return
+                  const { error } = await supabase
+                    .from('pickups')
+                    .insert({ book_id: selectedBook.id })
+                  if (error) throw error
+                  closeBook()
+                  showView('client')
+                  void refreshCatalog()
+                }
+              : undefined
+          }
+          signedIn={Boolean(session)}
           book={selectedBook}
           onClose={closeBook}
           onSave={() => void saveBook(selectedBook)}
@@ -937,6 +967,10 @@ function AuthRoutePage({
 }
 
 function BookDetailDialog({
+  offers,
+  onSelect,
+  reserve,
+  signedIn,
   book,
   onClose,
   onSave,
@@ -950,10 +984,17 @@ function BookDetailDialog({
   saved: boolean
   saving: boolean
   allowContact: boolean
+  offers: BookRecord[]
+  onSelect: (book: BookRecord) => void
+  reserve?: () => Promise<void>
+  signedIn: boolean
 }) {
   const whatsapp = allowContact ? getWhatsappUrl(book) : undefined
   const dialogRef = useRef<HTMLElement>(null)
   const [linkCopied, setLinkCopied] = useState(false)
+  const [reserving, setReserving] = useState(false)
+  const [reserveError, setReserveError] = useState('')
+  const [photo, setPhoto] = useState('')
 
   const copyBookLink = async () => {
     try {
@@ -1019,7 +1060,28 @@ function BookDetailDialog({
         </button>
 
         <div className="dialog-cover">
-          <BookCover book={book} />
+          <BookCover book={photo ? { ...book, coverUrl: photo } : book} />
+          {Boolean(book.copyPhotos?.length) && (
+            <div className="copy-gallery">
+              <button
+                type="button"
+                aria-pressed={!photo}
+                onClick={() => setPhoto('')}
+              >
+                Capa
+              </button>
+              {book.copyPhotos?.map((url, i) => (
+                <button
+                  type="button"
+                  key={url}
+                  aria-pressed={photo === url}
+                  onClick={() => setPhoto(url)}
+                >
+                  Foto {i + 1}
+                </button>
+              ))}
+            </div>
+          )}
         </div>
 
         <div className="dialog-content">
@@ -1029,6 +1091,49 @@ function BookDetailDialog({
           </div>
           <h2 id="book-dialog-title">{book.title}</h2>
           <p className="dialog-author">{book.author}</p>
+          {book.conditionNotes && (
+            <p>
+              <strong>{conditionLabel[book.condition]}:</strong>{' '}
+              {book.conditionNotes}
+            </p>
+          )}
+          {offers.length > 1 && (
+            <label className="copy-compare">
+              Comparar exemplares
+              <select
+                value={book.id}
+                onChange={(e) => {
+                  const next = offers.find((b) => b.id === e.target.value)
+                  if (next) onSelect(next)
+                }}
+              >
+                {offers.map((b) => (
+                  <option key={b.id} value={b.id}>
+                    {formatCurrency(b.price)} · {conditionLabel[b.condition]} ·{' '}
+                    {b.store?.name}
+                  </option>
+                ))}
+              </select>
+            </label>
+          )}
+          {reserve && (
+            <button
+              className="primary-action"
+              disabled={reserving}
+              onClick={async () => {
+                setReserving(true)
+                try {
+                  await reserve()
+                } catch (e) {
+                  setReserveError(friendlyErrorMessage(e))
+                  setReserving(false)
+                }
+              }}
+            >
+              {signedIn ? 'Reservar para retirada' : 'Entrar para reservar'}
+            </button>
+          )}
+          {reserveError && <p role="alert">{reserveError}</p>}
           <p className="dialog-summary">
             {book.summary ??
               'Exemplar disponível no acervo de um sebo parceiro.'}
@@ -1269,8 +1374,29 @@ function AuthBox({
   const [showPassword, setShowPassword] = useState(false)
   const [message, setMessage] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
-  const [confirmationEmail, setConfirmationEmail] = useState('')
+  const confirmationKey = `sebo-virtual:confirmation:${intent}`
+  const [confirmationEmail, setConfirmationEmail] = useState(
+    () => window.sessionStorage.getItem(confirmationKey) ?? '',
+  )
   const [confirmationCode, setConfirmationCode] = useState('')
+  const [resendAt, setResendAt] = useState(
+    () =>
+      Number(window.sessionStorage.getItem(confirmationKey + ':resend')) || 0,
+  )
+  const [seconds, setSeconds] = useState(0)
+  useEffect(() => {
+    if (confirmationEmail)
+      window.sessionStorage.setItem(confirmationKey, confirmationEmail)
+    else window.sessionStorage.removeItem(confirmationKey)
+  }, [confirmationEmail, confirmationKey])
+  useEffect(() => {
+    window.sessionStorage.setItem(confirmationKey + ':resend', String(resendAt))
+    const update = () =>
+      setSeconds(Math.max(0, Math.ceil((resendAt - Date.now()) / 1000)))
+    update()
+    const timer = window.setInterval(update, 1000)
+    return () => window.clearInterval(timer)
+  }, [resendAt, confirmationKey])
 
   const handleAuth = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
@@ -1284,11 +1410,13 @@ function AuthBox({
     try {
       if (authMode === 'signin') {
         await signIn(email, password)
+        window.sessionStorage.removeItem(confirmationKey)
         setMessage('Login realizado.')
         await onAuthChange()
       } else if (authMode === 'signup') {
         await signUp(email, password, displayName, intent)
         setConfirmationEmail(email.trim())
+        setResendAt(Date.now() + 60000)
         setConfirmationCode('')
         setMessage(null)
         await onAuthChange()
@@ -1299,15 +1427,20 @@ function AuthBox({
         )
       }
     } catch (error) {
+      if (
+        error instanceof Error &&
+        error.message.toLowerCase().includes('email not confirmed')
+      ) {
+        setConfirmationEmail(email.trim())
+        setConfirmationCode('')
+      }
       setMessage(friendlyErrorMessage(error))
     } finally {
       setSaving(false)
     }
   }
 
-  const handleCodeConfirmation = async (
-    event: FormEvent<HTMLFormElement>,
-  ) => {
+  const handleCodeConfirmation = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
     if (
       saving ||
@@ -1319,6 +1452,7 @@ function AuthBox({
     setMessage(null)
     try {
       await verifySignupCode(confirmationEmail, confirmationCode)
+      window.sessionStorage.removeItem(confirmationKey)
       setMessage('Email confirmado. Sua conta está pronta.')
       await onAuthChange()
     } catch (error) {
@@ -1329,11 +1463,12 @@ function AuthBox({
   }
 
   const handleCodeResend = async () => {
-    if (saving) return
+    if (saving || Date.now() < resendAt) return
     setSaving(true)
     setMessage(null)
     try {
       await resendSignupCode(confirmationEmail, intent)
+      setResendAt(Date.now() + 60000)
       setMessage('Novo código enviado. Confira também a pasta de spam.')
     } catch (error) {
       setMessage(friendlyErrorMessage(error))
@@ -1428,12 +1563,13 @@ function AuthBox({
           <div className="confirmation-actions">
             <button
               className="secondary-action"
-              disabled={saving}
+              disabled={saving || seconds > 0}
               type="button"
               onClick={() => void handleCodeResend()}
+              aria-disabled={saving || seconds > 0}
             >
               <RefreshCw size={17} />
-              Reenviar código
+              {seconds > 0 ? `Reenviar em ${seconds}s` : 'Reenviar código'}
             </button>
             <button
               className="text-action"
@@ -1441,6 +1577,7 @@ function AuthBox({
               type="button"
               onClick={() => {
                 setConfirmationEmail('')
+                setResendAt(0)
                 setConfirmationCode('')
                 setMessage(null)
               }}
@@ -1456,154 +1593,158 @@ function AuthBox({
         </div>
       ) : (
         <>
-      <div className="segmented auth-segmented">
-        <button
-          className={authMode === 'signin' ? 'active' : ''}
-          aria-pressed={authMode === 'signin'}
-          disabled={saving}
-          type="button"
-          onClick={() => {
-            setAuthMode('signin')
-            setMessage(null)
-          }}
-        >
-          Entrar
-        </button>
-        <button
-          className={authMode === 'signup' ? 'active' : ''}
-          aria-pressed={authMode === 'signup'}
-          disabled={saving}
-          type="button"
-          onClick={() => {
-            setAuthMode('signup')
-            setMessage(null)
-          }}
-        >
-          Cadastrar
-        </button>
-        <button
-          className={authMode === 'reset' ? 'active' : ''}
-          aria-pressed={authMode === 'reset'}
-          disabled={saving}
-          type="button"
-          onClick={() => {
-            setAuthMode('reset')
-            setMessage(null)
-          }}
-        >
-          Recuperar senha
-        </button>
-      </div>
-      {authMode !== 'reset' && (
-        <>
-          <button
-            className="google-auth-button"
-            disabled={saving}
-            type="button"
-            onClick={() => void handleGoogleAuth()}
-          >
-            <span className="google-mark" aria-hidden="true">
-              G
-            </span>
-            {authMode === 'signup'
-              ? 'Cadastrar com Google'
-              : 'Continuar com Google'}
-          </button>
-          <div className="auth-divider" aria-hidden="true">
-            <span>ou use seu email</span>
+          <div className="segmented auth-segmented">
+            <button
+              className={authMode === 'signin' ? 'active' : ''}
+              aria-pressed={authMode === 'signin'}
+              disabled={saving}
+              type="button"
+              onClick={() => {
+                setAuthMode('signin')
+                setMessage(null)
+              }}
+            >
+              Entrar
+            </button>
+            <button
+              className={authMode === 'signup' ? 'active' : ''}
+              aria-pressed={authMode === 'signup'}
+              disabled={saving}
+              type="button"
+              onClick={() => {
+                setAuthMode('signup')
+                setMessage(null)
+              }}
+            >
+              Cadastrar
+            </button>
+            <button
+              className={authMode === 'reset' ? 'active' : ''}
+              aria-pressed={authMode === 'reset'}
+              disabled={saving}
+              type="button"
+              onClick={() => {
+                setAuthMode('reset')
+                setMessage(null)
+              }}
+            >
+              Recuperar senha
+            </button>
           </div>
-        </>
-      )}
-      <form className="stack-form" onSubmit={handleAuth}>
-        {authMode === 'signup' && (
-          <label>
-            Nome
-            <input
-              required
-              value={displayName}
-              maxLength={80}
-              autoComplete="name"
-              onChange={(event) => setDisplayName(event.target.value)}
-              placeholder={
-                intent === 'store' ? 'Responsavel pelo sebo' : 'Seu nome'
-              }
-            />
-          </label>
-        )}
-        <label>
-          Email
-          <input
-            required
-            type="email"
-            autoComplete="email"
-            value={email}
-            onChange={(event) => setEmail(event.target.value)}
-            placeholder={
-              intent === 'store' ? 'sebo@email.com' : 'cliente@email.com'
-            }
-          />
-        </label>
-        {authMode !== 'reset' && (
-          <label>
-            Senha
-            <span className="password-field">
+          {authMode !== 'reset' && (
+            <>
+              <button
+                className="google-auth-button"
+                disabled={saving}
+                type="button"
+                onClick={() => void handleGoogleAuth()}
+              >
+                <span className="google-mark" aria-hidden="true">
+                  G
+                </span>
+                {authMode === 'signup'
+                  ? 'Cadastrar com Google'
+                  : 'Continuar com Google'}
+              </button>
+              <div className="auth-divider" aria-hidden="true">
+                <span>ou use seu email</span>
+              </div>
+            </>
+          )}
+          <form className="stack-form" onSubmit={handleAuth}>
+            {authMode === 'signup' && (
+              <label>
+                Nome
+                <input
+                  required
+                  value={displayName}
+                  maxLength={80}
+                  autoComplete="name"
+                  onChange={(event) => setDisplayName(event.target.value)}
+                  placeholder={
+                    intent === 'store' ? 'Responsavel pelo sebo' : 'Seu nome'
+                  }
+                />
+              </label>
+            )}
+            <label>
+              Email
               <input
                 required
-                minLength={6}
-                autoComplete={
-                  authMode === 'signin' ? 'current-password' : 'new-password'
+                type="email"
+                autoComplete="email"
+                value={email}
+                onChange={(event) => setEmail(event.target.value)}
+                placeholder={
+                  intent === 'store' ? 'sebo@email.com' : 'cliente@email.com'
                 }
-                type={showPassword ? 'text' : 'password'}
-                value={password}
-                onChange={(event) => setPassword(event.target.value)}
-                placeholder="minimo 6 caracteres"
               />
-              <button
-                className="icon-button"
-                type="button"
-                aria-label={showPassword ? 'Ocultar senha' : 'Mostrar senha'}
-                title={showPassword ? 'Ocultar senha' : 'Mostrar senha'}
-                onClick={() => setShowPassword(!showPassword)}
-              >
-                {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
-              </button>
-            </span>
-          </label>
-        )}
-        {authMode === 'signup' && (
-          <label>
-            Confirmar senha
-            <input
-              required
-              minLength={6}
-              type={showPassword ? 'text' : 'password'}
-              autoComplete="new-password"
-              value={confirmPassword}
-              onChange={(event) => setConfirmPassword(event.target.value)}
-              placeholder="Digite a senha novamente"
-            />
-          </label>
-        )}
-        <button className="primary-action" disabled={saving} type="submit">
-          {saving ? (
-            <Loader2 className="spin" size={18} />
-          ) : authMode === 'reset' ? (
-            <KeyRound size={18} />
-          ) : (
-            <User size={18} />
+            </label>
+            {authMode !== 'reset' && (
+              <label>
+                Senha
+                <span className="password-field">
+                  <input
+                    required
+                    minLength={6}
+                    autoComplete={
+                      authMode === 'signin'
+                        ? 'current-password'
+                        : 'new-password'
+                    }
+                    type={showPassword ? 'text' : 'password'}
+                    value={password}
+                    onChange={(event) => setPassword(event.target.value)}
+                    placeholder="minimo 6 caracteres"
+                  />
+                  <button
+                    className="icon-button"
+                    type="button"
+                    aria-label={
+                      showPassword ? 'Ocultar senha' : 'Mostrar senha'
+                    }
+                    title={showPassword ? 'Ocultar senha' : 'Mostrar senha'}
+                    onClick={() => setShowPassword(!showPassword)}
+                  >
+                    {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
+                  </button>
+                </span>
+              </label>
+            )}
+            {authMode === 'signup' && (
+              <label>
+                Confirmar senha
+                <input
+                  required
+                  minLength={6}
+                  type={showPassword ? 'text' : 'password'}
+                  autoComplete="new-password"
+                  value={confirmPassword}
+                  onChange={(event) => setConfirmPassword(event.target.value)}
+                  placeholder="Digite a senha novamente"
+                />
+              </label>
+            )}
+            <button className="primary-action" disabled={saving} type="submit">
+              {saving ? (
+                <Loader2 className="spin" size={18} />
+              ) : authMode === 'reset' ? (
+                <KeyRound size={18} />
+              ) : (
+                <User size={18} />
+              )}
+              {authMode === 'signin'
+                ? 'Entrar'
+                : authMode === 'signup'
+                  ? 'Criar conta'
+                  : 'Enviar email'}
+            </button>
+          </form>
+          {message && (
+            <p className="form-message" role="status">
+              {message}
+            </p>
           )}
-          {authMode === 'signin'
-            ? 'Entrar'
-            : authMode === 'signup'
-              ? 'Criar conta'
-              : 'Enviar email'}
-        </button>
-      </form>
-      {message && (
-        <p className="form-message" role="status">
-          {message}
-        </p>
-      )}
         </>
       )}
     </section>
@@ -1611,6 +1752,8 @@ function AuthBox({
 }
 
 function ClientPanel({
+  books,
+  onCatalogChange,
   session,
   onAuthChange,
   onCatalogSearch,
@@ -1620,6 +1763,8 @@ function ClientPanel({
   onAuthChange: () => Promise<void>
   onCatalogSearch: (term: string) => void
   focusWishlist: boolean
+  books: BookRecord[]
+  onCatalogChange: () => void
 }) {
   const [profile, setProfile] = useState<ProfileRecord | null>(null)
   const [wishlist, setWishlist] = useState<WishlistRecord[]>([])
@@ -1729,11 +1874,7 @@ function ClientPanel({
           description="Entre ou crie sua conta para guardar os livros que deseja encontrar."
           onAuthChange={onAuthChange}
         />
-        <aside
-          className="owner-note"
-          id="wishlist-panel"
-          tabIndex={-1}
-        >
+        <aside className="owner-note" id="wishlist-panel" tabIndex={-1}>
           <Heart size={24} />
           <h3>Wishlist do leitor</h3>
           <p>
@@ -1849,6 +1990,11 @@ function ClientPanel({
                 <div>
                   <strong>{item.title}</strong>
                   {item.author && <span>{item.author}</span>}
+                  <WishlistAvailability
+                    books={books}
+                    item={item}
+                    search={onCatalogSearch}
+                  />
                 </div>
                 <div className="wishlist-actions">
                   <button
@@ -1877,7 +2023,39 @@ function ClientPanel({
           </div>
         )}
       </aside>
+      <Pickups readerId={session.user.id} onChange={onCatalogChange} />
     </div>
+  )
+}
+
+function WishlistAvailability({
+  books,
+  item,
+  search,
+}: {
+  books: BookRecord[]
+  item: WishlistRecord
+  search: (q: string) => void
+}) {
+  const found = books.filter(
+    (b) =>
+      b.quantity > 0 &&
+      normalizeSearch(b.title) === normalizeSearch(item.title) &&
+      (!item.author ||
+        normalizeSearch(b.author).includes(normalizeSearch(item.author))),
+  )
+  const n = new Set(found.map((b) => b.storeId)).size
+  return n ? (
+    <button
+      className="text-action"
+      onClick={() =>
+        search([item.title, item.author].filter(Boolean).join(' '))
+      }
+    >
+      Disponível em {n} {n === 1 ? 'sebo' : 'sebos'}
+    </button>
+  ) : (
+    <small>Aguardando exemplar</small>
   )
 }
 
@@ -1908,6 +2086,7 @@ function OwnerPanel({
     openingHours: '',
   })
   const [bookDraft, setBookDraft] = useState<BookDraft>(emptyBookDraft)
+  const [uploadingPhoto, setUploadingPhoto] = useState(false)
 
   const refreshOwnerBooks = useCallback(async (storeId: string) => {
     const loadedBooks = await loadMyBooks(storeId)
@@ -1992,12 +2171,14 @@ function OwnerPanel({
   }, [inventoryQuery, myBooks])
 
   const resetBookForm = () => {
+    if(uploadingPhoto) return
     setEditingBookId(null)
     setBookDraft(emptyBookDraft)
   }
 
-  const startEditingBook = (book: BookRecord) => {
-    setEditingBookId(book.id)
+  const startEditingBook = (book: BookRecord, another = false) => {
+    if (uploadingPhoto) return
+    setEditingBookId(another ? null : book.id)
     setBookDraft({
       title: book.title,
       author: book.author,
@@ -2009,9 +2190,15 @@ function OwnerPanel({
       coverUrl: book.coverUrl ?? '',
       condition: book.condition,
       price: String(book.price),
-      quantity: String(book.quantity),
+      quantity: another ? '1' : String(book.quantity),
+      conditionNotes: another ? '' : book.conditionNotes,
+      copyPhotos: another ? [] : book.copyPhotos,
     })
-    setMessage(`Editando "${book.title}".`)
+    setMessage(
+      another
+        ? 'Novo exemplar: confira a conservação e o preço.'
+        : `Editando "${book.title}".`,
+    )
     document
       .getElementById('book-editor')
       ?.scrollIntoView({ behavior: 'smooth', block: 'start' })
@@ -2039,11 +2226,16 @@ function OwnerPanel({
 
   const handleBook = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
+    if (saving || uploadingPhoto) return
     setSaving(true)
     setMessage(null)
     try {
       if (editingBookId) {
-        await updateBook(editingBookId, bookDraft)
+        await updateBook(
+          editingBookId,
+          bookDraft,
+          myBooks.find((b) => b.id === editingBookId)?.updatedAt,
+        )
         setMessage('Livro atualizado no acervo.')
       } else {
         await createBook(store?.id ?? '', bookDraft)
@@ -2453,6 +2645,17 @@ function OwnerPanel({
                 }
               />
             </label>
+            <CopyEditor
+              draft={bookDraft}
+              onChange={(next) =>
+                setBookDraft((current) => ({
+                  ...current,
+                  conditionNotes: next.conditionNotes,
+                  copyPhotos: next.copyPhotos,
+                }))
+              }
+              onBusy={setUploadingPhoto}
+            />
             <div className="form-row three">
               <label>
                 Estado
@@ -2501,7 +2704,7 @@ function OwnerPanel({
             <div className="form-actions">
               <button
                 className="primary-action"
-                disabled={saving}
+                disabled={saving || uploadingPhoto}
                 type="submit"
               >
                 {saving ? (
@@ -2628,6 +2831,15 @@ function OwnerPanel({
                       <button
                         className="icon-button"
                         type="button"
+                        title="Cadastrar outro exemplar"
+                        aria-label={`Cadastrar outro exemplar de ${book.title}`}
+                        onClick={() => startEditingBook(book, true)}
+                      >
+                        <Plus size={16} />
+                      </button>
+                      <button
+                        className="icon-button"
+                        type="button"
                         title="Editar livro"
                         onClick={() => startEditingBook(book)}
                       >
@@ -2662,6 +2874,15 @@ function OwnerPanel({
           </>
         )}
       </aside>
+      {store?.approved && (
+        <Pickups
+          storeId={store.id}
+          onChange={() => {
+            void refreshOwnerBooks(store.id)
+            onCatalogChange()
+          }}
+        />
+      )}
       {store?.approved && (
         <StoreDonations storeId={store.id} storeName={store.name} />
       )}
