@@ -96,8 +96,8 @@ export function validateBookDraft(draft: BookDraft): string | null {
   const coverUrl = draft.coverUrl.trim()
   if (coverUrl) {
     if (coverUrl.length > LIMITS.coverUrl) return 'O endereço da capa é muito longo.'
-    if (!/^https?:\/\//i.test(coverUrl))
-      return 'O endereço da capa precisa começar com http:// ou https://.'
+    if (!/^https?:\/\//i.test(coverUrl) && !/^\/covers\/[a-z0-9-]+\.png$/.test(coverUrl))
+      return 'Use um endereço http:// ou https://, ou uma capa do catálogo em /covers/.'
   }
 
   return null

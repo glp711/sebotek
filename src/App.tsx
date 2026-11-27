@@ -1218,7 +1218,7 @@ function StoresView({
               </div>
               <div className="store-detail">
                 <Phone size={16} />
-                <span>{store.phone}</span>
+                <span>{store.phone || 'Telefone não informado'}</span>
               </div>
               {store.openingHours && <small>{store.openingHours}</small>}
               <div className="store-card-actions">
@@ -2432,7 +2432,8 @@ function OwnerPanel({
             <label>
               Link da capa
               <input
-                type="url"
+                type="text"
+                inputMode="url"
                 placeholder="https://..."
                 value={bookDraft.coverUrl}
                 maxLength={2048}
@@ -2937,7 +2938,7 @@ function AdminPanel({
                     </span>
                     <span>
                       <Phone size={15} />
-                      {store.phone}
+                      {store.phone || 'Telefone não informado'}
                     </span>
                     {store.openingHours && (
                       <span>

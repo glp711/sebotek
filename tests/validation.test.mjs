@@ -56,6 +56,8 @@ test('isSlugConflict only matches the unique slug violation', () => {
 test('accepts a complete valid book and a price with comma', () => {
   assert.equal(validateBookDraft(book), null)
   assert.equal(validateBookDraft({ ...book, price: '12,50' }), null)
+  assert.equal(validateBookDraft({ ...book, coverUrl: '/covers/marina.png' }), null)
+  assert.ok(validateBookDraft({ ...book, coverUrl: '/covers/../marina.png' }))
   assert.equal(validateBookDraft({ ...book, isbn: '', publishedYear: '', coverUrl: '' }), null)
 })
 

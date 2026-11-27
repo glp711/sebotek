@@ -1554,22 +1554,17 @@ h2 {
 }
 
 .dialog-cover {
-  --cover-hue: 210;
-  min-height: 520px;
-  display: flex;
-  flex-direction: column;
-  justify-content: space-between;
-  gap: 18px;
-  padding: 34px 26px;
-  background:
-    linear-gradient(155deg, hsla(var(--cover-hue), 78%, 64%, 0.95), hsla(calc(var(--cover-hue) + 45), 65%, 42%, 0.95)),
-    #264653;
-  color: #101010;
+  min-height: 0;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  background: transparent;
 }
 
-.dialog-cover.has-image {
-  padding: 0;
-  background: #101010;
+.dialog-cover .cover-art img {
+  object-fit: contain;
+  max-height: none;
+  filter: none;
 }
 
 .dialog-cover span {
@@ -1826,7 +1821,12 @@ h2 {
   }
 
   .dialog-cover {
-    min-height: 360px;
+    height: auto;
+    padding: 20px 24px 0;
+  }
+
+  .dialog-cover .cover-art {
+    height: clamp(170px, 34svh, 300px);
   }
 
   .dialog-content {
